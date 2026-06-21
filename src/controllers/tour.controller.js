@@ -2,6 +2,55 @@ const tourService = require('../services/tour.service');
 
 const getAllTours = async (req, res, next) => {
   try {
+    const { minPrice, maxPrice, startDate, minAvailableSlots } = req.query;
+    const isInvalidNumber = (value) =>
+      value !== undefined &&
+      value !== '' &&
+      (!Number.isFinite(Number(value)) || Number(value) < 0);
+
+    if (
+      isInvalidNumber(minPrice) ||
+      isInvalidNumber(maxPrice) ||
+      isInvalidNumber(minAvailableSlots)
+    ) {
+      return res.status(400).json({
+        message: 'Price and available slots must be non-negative numbers',
+      });
+    }
+
+    if (
+      minAvailableSlots !== undefined &&
+      minAvailableSlots !== '' &&
+      !Number.isInteger(Number(minAvailableSlots))
+    ) {
+      return res.status(400).json({
+        message: 'Available slots must be a whole number',
+      });
+    }
+
+    if (
+      minPrice !== undefined &&
+      maxPrice !== undefined &&
+      Number(minPrice) > Number(maxPrice)
+    ) {
+      return res.status(400).json({
+        message: 'Minimum price cannot be greater than maximum price',
+      });
+    }
+
+    const parsedStartDate = startDate
+      ? new Date(`${startDate}T00:00:00.000Z`)
+      : null;
+    const isValidStartDate =
+      !startDate ||
+      (/^\d{4}-\d{2}-\d{2}$/.test(startDate) &&
+        !Number.isNaN(parsedStartDate.getTime()) &&
+        parsedStartDate.toISOString().slice(0, 10) === startDate);
+
+    if (!isValidStartDate) {
+      return res.status(400).json({ message: 'Start date must use YYYY-MM-DD format' });
+    }
+
     const tours = await tourService.getAllTours(req.query);
 
     res.status(200).json({

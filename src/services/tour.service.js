@@ -3,7 +3,15 @@ const { sql, getPool } = require('../config/db');
 /*
   User chỉ xem tour đã được manager duyệt: status = approved
 */
-const getAllTours = async ({ search, location, category, minPrice, maxPrice }) => {
+const getAllTours = async ({
+  search,
+  location,
+  category,
+  minPrice,
+  maxPrice,
+  startDate,
+  minAvailableSlots,
+}) => {
   const pool = getPool();
 
   const request = pool.request();
@@ -48,6 +56,16 @@ const getAllTours = async ({ search, location, category, minPrice, maxPrice }) =
   if (maxPrice) {
     query += ` AND t.price <= @maxPrice`;
     request.input('maxPrice', sql.Decimal(18, 2), Number(maxPrice));
+  }
+
+  if (startDate) {
+    query += ` AND t.startDate >= @startDate`;
+    request.input('startDate', sql.Date, startDate);
+  }
+
+  if (minAvailableSlots) {
+    query += ` AND t.availableSlots >= @minAvailableSlots`;
+    request.input('minAvailableSlots', sql.Int, Number(minAvailableSlots));
   }
 
   query += ` ORDER BY t.createdAt DESC`;
