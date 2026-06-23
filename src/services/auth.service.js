@@ -30,6 +30,49 @@ const findUserById = async (id) => {
   return result.recordset[0];
 };
 
+const getUserStats = async (userId) => {
+  const pool = getPool();
+
+  const result = await pool
+    .request()
+    .input('userId', sql.Int, userId)
+    .query(`
+      SELECT
+        (SELECT COUNT(*) FROM Bookings WHERE userId = @userId) AS bookings,
+        (SELECT COUNT(*) FROM Favorites WHERE userId = @userId) AS favorites,
+        (SELECT COUNT(*) FROM Reviews WHERE userId = @userId) AS reviews
+    `);
+
+  const stats = result.recordset[0] || {};
+  return {
+    bookings: stats.bookings || 0,
+    favorites: stats.favorites || 0,
+    reviews: stats.reviews || 0,
+  };
+};
+
+const updateUserProfile = async (id, { fullName, phone, avatar }) => {
+  const pool = getPool();
+
+  const result = await pool
+    .request()
+    .input('id', sql.Int, id)
+    .input('fullName', sql.NVarChar, fullName)
+    .input('phone', sql.NVarChar, phone || '')
+    .input('avatar', sql.NVarChar, avatar || '')
+    .query(`
+      UPDATE Users
+      SET fullName = @fullName,
+          phone = @phone,
+          avatar = @avatar
+      OUTPUT INSERTED.id, INSERTED.fullName, INSERTED.email, INSERTED.phone,
+             INSERTED.avatar, INSERTED.role, INSERTED.createdAt
+      WHERE id = @id
+    `);
+
+  return result.recordset[0];
+};
+
 const createUser = async ({ fullName, email, password, phone }) => {
   const pool = getPool();
 
@@ -91,6 +134,8 @@ const revokeRefreshToken = async (tokenHash) => {
 module.exports = {
   findUserByEmail,
   findUserById,
+  getUserStats,
+  updateUserProfile,
   createUser,
   createRefreshToken,
   consumeRefreshToken,

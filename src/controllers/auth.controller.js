@@ -157,13 +157,45 @@ const logout = async (req, res, next) => {
 const getProfile = async (req, res, next) => {
   try {
     const user = await authService.findUserById(req.user.id);
+    const stats = await authService.getUserStats(req.user.id);
+
     return res.status(200).json({
       message: 'Get profile successfully',
-      data: user,
+      data: { ...user, stats },
     });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { register, login, refresh, logout, getProfile };
+const updateProfile = async (req, res, next) => {
+  try {
+    const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim() : '';
+    const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
+    const avatar = typeof req.body.avatar === 'string' ? req.body.avatar.trim() : '';
+
+    if (!fullName) {
+      return res.status(400).json({ message: 'Full name is required' });
+    }
+
+    if (phone && !/^[0-9+\-\s]{9,15}$/.test(phone)) {
+      return res.status(400).json({ message: 'Phone number is invalid' });
+    }
+
+    const user = await authService.updateUserProfile(req.user.id, {
+      fullName,
+      phone,
+      avatar,
+    });
+    const stats = await authService.getUserStats(req.user.id);
+
+    return res.status(200).json({
+      message: 'Update profile successfully',
+      data: { ...user, stats },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { register, login, refresh, logout, getProfile, updateProfile };
