@@ -8,7 +8,7 @@ const generateAccessToken = (user) =>
   jwt.sign(
     { id: user.id, role: user.role },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m' }
+    { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || '15m' }
   );
 
 const normalizeEmail = (email) =>
