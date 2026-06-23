@@ -31,6 +31,7 @@ const getAllTours = async ({
     LEFT JOIN Guides g ON t.guideId = g.id
     LEFT JOIN Users u ON t.providerId = u.id
     WHERE t.status = 'approved'
+      AND (t.startDate IS NULL OR t.startDate >= CAST(GETDATE() AS DATE))
   `;
 
   if (search) {
@@ -123,10 +124,11 @@ const getTourById = async (id) => {
     .query(`
       SELECT 
         r.id,
+        r.userId,
         r.rating,
         r.comment,
         r.createdAt,
-        u.fullName
+        u.fullName AS userName
       FROM Reviews r
       JOIN Users u ON r.userId = u.id
       WHERE r.tourId = @tourId

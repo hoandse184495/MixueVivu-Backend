@@ -1,23 +1,44 @@
 const { sql, getPool } = require('../config/db');
 
 const searchUsers = async (keyword, currentUserId) => {
+  const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
+  if (!normalizedKeyword) {
+    return [];
+  }
+
   const pool = getPool();
 
   const result = await pool
     .request()
-    .input('keyword', sql.NVarChar, `%${keyword || ''}%`)
+    .input('keyword', sql.NVarChar, `%${normalizedKeyword}%`)
     .input('currentUserId', sql.Int, currentUserId)
     .query(`
-      SELECT id, fullName, email, phone, avatar, role
-      FROM Users
-      WHERE id <> @currentUserId
-        AND role = 'user'
-        AND (
-          fullName LIKE @keyword
-          OR email LIKE @keyword
-          OR phone LIKE @keyword
+      SELECT
+        u.id,
+        u.fullName,
+        u.email,
+        u.phone,
+        u.avatar,
+        u.role,
+        f.status AS friendStatus,
+        f.senderId AS friendSenderId,
+        f.receiverId AS friendReceiverId
+      FROM Users u
+      LEFT JOIN Friends f
+        ON (
+          (f.senderId = @currentUserId AND f.receiverId = u.id)
+          OR
+          (f.senderId = u.id AND f.receiverId = @currentUserId)
         )
-      ORDER BY fullName ASC
+        AND f.status IN ('pending', 'accepted')
+      WHERE u.id <> @currentUserId
+        AND u.role = 'user'
+        AND (
+          u.fullName LIKE @keyword
+          OR u.email LIKE @keyword
+          OR u.phone LIKE @keyword
+        )
+      ORDER BY u.fullName ASC
     `);
 
   return result.recordset;
@@ -35,8 +56,8 @@ const getMyFriends = async (userId) => {
         f.status,
         f.createdAt,
         u.id AS friendId,
-        u.fullName,
-        u.email,
+        u.fullName AS friendName,
+        u.email AS friendEmail,
         u.phone,
         u.avatar
       FROM Friends f
@@ -68,8 +89,8 @@ const getFriendRequests = async (userId) => {
         f.status,
         f.createdAt,
         u.id AS senderId,
-        u.fullName,
-        u.email,
+        u.fullName AS senderName,
+        u.email AS senderEmail,
         u.phone,
         u.avatar
       FROM Friends f

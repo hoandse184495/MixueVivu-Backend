@@ -75,11 +75,14 @@ const getMyBookings = async (userId) => {
     .query(`
       SELECT 
         b.*,
-        t.title,
-        t.location,
-        t.image,
-        t.duration,
-        t.price
+        b.numberOfPeople AS numPeople,
+        t.title AS tourTitle,
+        t.location AS tourLocation,
+        t.image AS tourImage,
+        t.duration AS tourDuration,
+        t.startDate AS tourStartDate,
+        t.endDate AS tourEndDate,
+        t.price AS tourPrice
       FROM Bookings b
       JOIN Tours t ON b.tourId = t.id
       WHERE b.userId = @userId
