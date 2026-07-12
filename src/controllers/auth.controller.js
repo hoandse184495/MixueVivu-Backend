@@ -197,5 +197,86 @@ const updateProfile = async (req, res, next) => {
     next(error);
   }
 };
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
 
-module.exports = { register, login, refresh, logout, getProfile, updateProfile };
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
+    }
+
+    if (!isStrongEnoughPassword(newPassword)) {
+      return res.status(400).json({
+        message: 'New password must be at least 8 characters and contain a letter and a number',
+      });
+    }
+
+    const user = await authService.findUserByEmail(req.user.email);
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await authService.changePassword(req.user.id, hashedPassword);
+
+    return res.status(200).json({ message: 'Change password successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const registerProvider = async (req, res, next) => {
+  try {
+    const fullName = typeof req.body.fullName === 'string' ? req.body.fullName.trim() : '';
+    const email = normalizeEmail(req.body.email);
+    const { password } = req.body;
+    const phone = typeof req.body.phone === 'string' ? req.body.phone.trim() : '';
+    const companyName = typeof req.body.companyName === 'string' ? req.body.companyName.trim() : '';
+
+    if (!fullName || !email || !password || !companyName) {
+      return res.status(400).json({
+        message: 'Full name, email, password and company name are required',
+      });
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
+    }
+
+    if (!isStrongEnoughPassword(password)) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters and contain a letter and a number',
+      });
+    }
+
+    const existingUser = await authService.findUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await authService.createProvider({
+      fullName,
+      email,
+      password: hashedPassword,
+      phone,
+      companyName,
+      companyAddress: req.body.companyAddress || '',
+      businessLicense: req.body.businessLicense || '',
+      description: req.body.description || '',
+    });
+    const tokens = await issueTokens(user);
+
+    return res.status(201).json({
+      message: 'Register provider successfully',
+      data: { ...tokens, user },
+    });
+  } catch (error) {
+    if (error.number === 2601 || error.number === 2627) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+    next(error);
+  }
+};
+
+module.exports = { register, login, refresh, logout, getProfile, updateProfile, changePassword, registerProvider };

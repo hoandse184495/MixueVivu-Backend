@@ -1,0 +1,207 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Bookings {
+  id               Int        @id(map: "PK__Bookings__3213E83F364E5CE2") @default(autoincrement())
+  userId           Int
+  tourId           Int
+  fullName         String     @db.NVarChar(100)
+  phone            String     @db.NVarChar(20)
+  numberOfPeople   Int
+  departureDate    DateTime?  @db.Date
+  totalPrice       Decimal?   @db.Decimal(18, 2)
+  note             String?    @db.NVarChar(Max)
+  status           String?    @default("pending", map: "DF__Bookings__status__5BE2A6F2") @db.NVarChar(20)
+  createdAt        DateTime?  @default(now(), map: "DF__Bookings__create__5DCAEF64") @db.DateTime
+  commissionAmount Decimal?   @default(0, map: "DF__Bookings__commis__7D439ABD") @db.Decimal(18, 2)
+  providerAmount   Decimal?   @default(0, map: "DF__Bookings__provid__7E37BEF6") @db.Decimal(18, 2)
+  Tours            Tours      @relation(fields: [tourId], references: [id], onUpdate: NoAction, map: "FK__Bookings__tourId__5FB337D6")
+  Users            Users      @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Bookings__userId__5EBF139D")
+  Payments         Payments[]
+  Payouts          Payouts[]
+}
+
+model Categories {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.NVarChar(100)
+  slug      String    @unique @db.NVarChar(100)
+  image     String?   @db.NVarChar(255)
+  isActive  Boolean   @default(true)
+  createdAt DateTime? @default(now()) @db.DateTime
+  Tours     Tours[]
+}
+
+model Contacts {
+  id        Int       @id(map: "PK__Contacts__3213E83F466D0EE8") @default(autoincrement())
+  userId    Int
+  subject   String    @db.NVarChar(200)
+  message   String    @db.NVarChar(Max)
+  reply     String?   @db.NVarChar(Max)
+  status    String?   @default("pending", map: "DF__Contacts__status__6E01572D") @db.NVarChar(20)
+  createdAt DateTime? @default(now(), map: "DF__Contacts__create__6FE99F9F") @db.DateTime
+  Users     Users     @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Contacts__userId__70DDC3D8")
+}
+
+model Favorites {
+  id        Int       @id(map: "PK__Favorite__3213E83F8170FD96") @default(autoincrement())
+  userId    Int
+  tourId    Int
+  createdAt DateTime? @default(now(), map: "DF__Favorites__creat__6383C8BA") @db.DateTime
+  Tours     Tours     @relation(fields: [tourId], references: [id], onUpdate: NoAction, map: "FK__Favorites__tourI__656C112C")
+  Users     Users     @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Favorites__userI__6477ECF3")
+
+  @@unique([userId, tourId], map: "UQ_Favorite")
+}
+
+model Friends {
+  id                              Int       @id(map: "PK__Friends__3213E83FEF7DFFD9") @default(autoincrement())
+  senderId                        Int
+  receiverId                      Int
+  status                          String?   @default("pending", map: "DF__Friends__status__73BA3083") @db.NVarChar(20)
+  createdAt                       DateTime? @default(now(), map: "DF__Friends__created__75A278F5") @db.DateTime
+  Users_Friends_receiverIdToUsers Users     @relation("Friends_receiverIdToUsers", fields: [receiverId], references: [id], onUpdate: NoAction, map: "FK__Friends__receive__778AC167")
+  Users_Friends_senderIdToUsers   Users     @relation("Friends_senderIdToUsers", fields: [senderId], references: [id], onUpdate: NoAction, map: "FK__Friends__senderI__76969D2E")
+}
+
+model Payments {
+  id            Int       @id @default(autoincrement())
+  bookingId     Int
+  userId        Int
+  amount        Decimal   @db.Decimal(18, 2)
+  method        String?   @default("bank_transfer") @db.NVarChar(50)
+  status        String    @default("pending") @db.NVarChar(20)
+  transactionId String?   @db.NVarChar(100)
+  note          String?   @db.NVarChar(Max)
+  paidAt        DateTime? @db.DateTime
+  createdAt     DateTime? @default(now()) @db.DateTime
+  Bookings      Bookings  @relation(fields: [bookingId], references: [id], onUpdate: NoAction)
+  Users         Users     @relation(fields: [userId], references: [id], onUpdate: NoAction)
+}
+
+model Payouts {
+  id               Int       @id @default(autoincrement())
+  bookingId        Int
+  providerId       Int
+  amount           Decimal   @db.Decimal(18, 2)
+  commissionAmount Decimal   @db.Decimal(18, 2)
+  providerAmount   Decimal   @db.Decimal(18, 2)
+  status           String    @default("pending") @db.NVarChar(20)
+  note             String?   @db.NVarChar(Max)
+  paidAt           DateTime? @db.DateTime
+  createdAt        DateTime? @default(now()) @db.DateTime
+  Bookings         Bookings  @relation(fields: [bookingId], references: [id], onUpdate: NoAction)
+  Users            Users     @relation(fields: [providerId], references: [id], onUpdate: NoAction)
+}
+
+model RefreshTokens {
+  id        BigInt   @id(map: "PK__RefreshT__3213E83F27DFE505") @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique(map: "UQ_RefreshTokens_TokenHash") @db.Char(64)
+  expiresAt DateTime
+  createdAt DateTime @default(dbgenerated("sysutcdatetime()"), map: "DF_RefreshTokens_CreatedAt")
+  Users     Users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK_RefreshTokens_Users")
+
+  @@index([expiresAt], map: "IX_RefreshTokens_ExpiresAt")
+  @@index([userId], map: "IX_RefreshTokens_UserId")
+}
+
+model Reviews {
+  id        Int       @id(map: "PK__Reviews__3213E83FB9076FE5") @default(autoincrement())
+  userId    Int
+  tourId    Int
+  rating    Int
+  comment   String?   @db.NVarChar(Max)
+  createdAt DateTime? @default(now(), map: "DF__Reviews__created__693CA210") @db.DateTime
+  Tours     Tours     @relation(fields: [tourId], references: [id], onUpdate: NoAction, map: "FK__Reviews__tourId__6B24EA82")
+  Users     Users     @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Reviews__userId__6A30C649")
+}
+
+model sysdiagrams {
+  name         String @db.NVarChar(128)
+  principal_id Int
+  diagram_id   Int    @id(map: "PK__sysdiagr__C2B05B61036D46AC") @default(autoincrement())
+  version      Int?
+  definition   Bytes?
+
+  @@unique([principal_id, name], map: "UK_principal_name")
+}
+
+model TourActivities {
+  id           Int     @id(map: "PK__TourActi__3213E83F4593D637") @default(autoincrement())
+  tourId       Int
+  title        String  @db.NVarChar(200)
+  activityTime String? @db.NVarChar(50)
+  location     String? @db.NVarChar(100)
+  description  String? @db.NVarChar(Max)
+  image        String? @db.NVarChar(255)
+  Tours        Tours   @relation(fields: [tourId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__TourActiv__tourI__59063A47")
+}
+
+model TourImages {
+  id        Int    @id @default(autoincrement())
+  tourId    Int
+  imageUrl  String @db.NVarChar(500)
+  sortOrder Int    @default(0)
+  Tours     Tours  @relation(fields: [tourId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model Tours {
+  id             Int              @id(map: "PK__Tours__3213E83F78E2E011") @default(autoincrement())
+  title          String           @db.NVarChar(200)
+  location       String           @db.NVarChar(100)
+  price          Decimal          @db.Decimal(18, 2)
+  duration       String?          @db.NVarChar(100)
+  image          String?          @db.NVarChar(255)
+  description    String?          @db.NVarChar(Max)
+  category       String?          @db.NVarChar(100)
+  categoryId     Int?
+  availableSlots Int?             @default(0, map: "DF__Tours__available__534D60F1")
+  startDate      DateTime?        @db.Date
+  endDate        DateTime?        @db.Date
+  averageRating  Float?           @default(0, map: "DF__Tours__averageRa__5441852A")
+  createdAt      DateTime?        @default(now(), map: "DF__Tours__createdAt__5535A963") @db.DateTime
+  providerId     Int?
+  status         String?          @default("pending", map: "DF__Tours__status__797309D9") @db.NVarChar(20)
+  rejectReason   String?          @db.NVarChar(Max)
+  commissionRate Float?           @default(0.1, map: "DF__Tours__commissio__7A672E12")
+  Bookings       Bookings[]
+  Favorites      Favorites[]
+  Reviews        Reviews[]
+  TourActivities TourActivities[]
+  TourImages     TourImages[]
+  Categories     Categories?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Users          Users?           @relation(fields: [providerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_Tours_Provider")
+}
+
+model Users {
+  id                                Int             @id(map: "PK__Users__3213E83F9FB85377") @default(autoincrement())
+  fullName                          String          @db.NVarChar(100)
+  email                             String          @unique(map: "UQ__Users__AB6E61644A086B8E") @db.NVarChar(100)
+  password                          String          @db.NVarChar(255)
+  phone                             String?         @db.NVarChar(20)
+  avatar                            String?         @db.NVarChar(255)
+  role                              String?         @default("user", map: "DF__Users__role__4AB81AF0") @db.NVarChar(20)
+  isActive                          Boolean         @default(true)
+  companyName                       String?         @db.NVarChar(200)
+  companyAddress                    String?         @db.NVarChar(500)
+  businessLicense                   String?         @db.NVarChar(255)
+  description                       String?         @db.NVarChar(Max)
+  createdAt                         DateTime?       @default(now(), map: "DF__Users__createdAt__4CA06362") @db.DateTime
+  Bookings                          Bookings[]
+  Contacts                          Contacts[]
+  Favorites                         Favorites[]
+  Friends_Friends_receiverIdToUsers  Friends[]       @relation("Friends_receiverIdToUsers")
+  Friends_Friends_senderIdToUsers    Friends[]       @relation("Friends_senderIdToUsers")
+  Payments                          Payments[]
+  Payouts                           Payouts[]
+  RefreshTokens                     RefreshTokens[]
+  Reviews                           Reviews[]
+  Tours                             Tours[]
+}

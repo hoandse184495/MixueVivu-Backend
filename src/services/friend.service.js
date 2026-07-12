@@ -1,4 +1,4 @@
-const { sql, getPool } = require('../config/db');
+const { prisma } = require('../config/db');
 
 const searchUsers = async (keyword, currentUserId) => {
   const normalizedKeyword = typeof keyword === 'string' ? keyword.trim() : '';
@@ -6,191 +6,143 @@ const searchUsers = async (keyword, currentUserId) => {
     return [];
   }
 
-  const pool = getPool();
+  const users = await prisma.users.findMany({
+    where: {
+      id: { not: currentUserId },
+      role: 'user',
+      OR: [
+        { fullName: { contains: normalizedKeyword } },
+        { email: { contains: normalizedKeyword } },
+        { phone: { contains: normalizedKeyword } },
+      ],
+    },
+    include: {
+      Friends_Friends_receiverIdToUsers: {
+        where: { senderId: currentUserId, status: { in: ['pending', 'accepted'] } },
+      },
+      Friends_Friends_senderIdToUsers: {
+        where: { receiverId: currentUserId, status: { in: ['pending', 'accepted'] } },
+      },
+    },
+    orderBy: { fullName: 'asc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('keyword', sql.NVarChar, `%${normalizedKeyword}%`)
-    .input('currentUserId', sql.Int, currentUserId)
-    .query(`
-      SELECT
-        u.id,
-        u.fullName,
-        u.email,
-        u.phone,
-        u.avatar,
-        u.role,
-        f.status AS friendStatus,
-        f.senderId AS friendSenderId,
-        f.receiverId AS friendReceiverId
-      FROM Users u
-      LEFT JOIN Friends f
-        ON (
-          (f.senderId = @currentUserId AND f.receiverId = u.id)
-          OR
-          (f.senderId = u.id AND f.receiverId = @currentUserId)
-        )
-        AND f.status IN ('pending', 'accepted')
-      WHERE u.id <> @currentUserId
-        AND u.role = 'user'
-        AND (
-          u.fullName LIKE @keyword
-          OR u.email LIKE @keyword
-          OR u.phone LIKE @keyword
-        )
-      ORDER BY u.fullName ASC
-    `);
-
-  return result.recordset;
+  return users.map((u) => {
+    const friendRel = u.Friends_Friends_receiverIdToUsers[0] || u.Friends_Friends_senderIdToUsers[0];
+    return {
+      id: u.id,
+      fullName: u.fullName,
+      email: u.email,
+      phone: u.phone,
+      avatar: u.avatar,
+      role: u.role,
+      friendStatus: friendRel?.status,
+      friendSenderId: friendRel?.senderId,
+      friendReceiverId: friendRel?.receiverId,
+    };
+  });
 };
 
 const getMyFriends = async (userId) => {
-  const pool = getPool();
+  const friends = await prisma.friends.findMany({
+    where: {
+      OR: [{ senderId: userId }, { receiverId: userId }],
+      status: 'accepted',
+    },
+    include: {
+      Users_Friends_senderIdToUsers: true,
+      Users_Friends_receiverIdToUsers: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .query(`
-      SELECT 
-        f.id AS friendRequestId,
-        f.status,
-        f.createdAt,
-        u.id AS friendId,
-        u.fullName AS friendName,
-        u.email AS friendEmail,
-        u.phone,
-        u.avatar
-      FROM Friends f
-      JOIN Users u 
-        ON (
-          CASE 
-            WHEN f.senderId = @userId THEN f.receiverId
-            ELSE f.senderId
-          END
-        ) = u.id
-      WHERE 
-        (f.senderId = @userId OR f.receiverId = @userId)
-        AND f.status = 'accepted'
-      ORDER BY f.createdAt DESC
-    `);
-
-  return result.recordset;
+  return friends.map((f) => {
+    const friendUser = f.senderId === userId ? f.Users_Friends_receiverIdToUsers : f.Users_Friends_senderIdToUsers;
+    return {
+      friendRequestId: f.id,
+      status: f.status,
+      createdAt: f.createdAt,
+      friendId: friendUser?.id,
+      friendName: friendUser?.fullName,
+      friendEmail: friendUser?.email,
+      phone: friendUser?.phone,
+      avatar: friendUser?.avatar,
+    };
+  });
 };
 
 const getFriendRequests = async (userId) => {
-  const pool = getPool();
+  const requests = await prisma.friends.findMany({
+    where: { receiverId: userId, status: 'pending' },
+    include: { Users_Friends_senderIdToUsers: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .query(`
-      SELECT 
-        f.id AS requestId,
-        f.status,
-        f.createdAt,
-        u.id AS senderId,
-        u.fullName AS senderName,
-        u.email AS senderEmail,
-        u.phone,
-        u.avatar
-      FROM Friends f
-      JOIN Users u ON f.senderId = u.id
-      WHERE f.receiverId = @userId
-        AND f.status = 'pending'
-      ORDER BY f.createdAt DESC
-    `);
-
-  return result.recordset;
+  return requests.map((f) => ({
+    requestId: f.id,
+    status: f.status,
+    createdAt: f.createdAt,
+    senderId: f.Users_Friends_senderIdToUsers?.id,
+    senderName: f.Users_Friends_senderIdToUsers?.fullName,
+    senderEmail: f.Users_Friends_senderIdToUsers?.email,
+    phone: f.Users_Friends_senderIdToUsers?.phone,
+    avatar: f.Users_Friends_senderIdToUsers?.avatar,
+  }));
 };
 
 const sendFriendRequest = async (senderId, receiverId) => {
-  const pool = getPool();
+  const existing = await prisma.friends.findFirst({
+    where: {
+      OR: [
+        { senderId, receiverId },
+        { senderId: receiverId, receiverId: senderId },
+      ],
+    },
+  });
 
-  const result = await pool
-    .request()
-    .input('senderId', sql.Int, senderId)
-    .input('receiverId', sql.Int, receiverId)
-    .query(`
-      IF NOT EXISTS (
-        SELECT 1
-        FROM Friends
-        WHERE 
-          (senderId = @senderId AND receiverId = @receiverId)
-          OR
-          (senderId = @receiverId AND receiverId = @senderId)
-      )
-      BEGIN
-        INSERT INTO Friends (senderId, receiverId, status)
-        OUTPUT INSERTED.*
-        VALUES (@senderId, @receiverId, 'pending')
-      END
-      ELSE
-      BEGIN
-        SELECT TOP 1 *
-        FROM Friends
-        WHERE 
-          (senderId = @senderId AND receiverId = @receiverId)
-          OR
-          (senderId = @receiverId AND receiverId = @senderId)
-      END
-    `);
+  if (existing) return existing;
 
-  return result.recordset[0];
+  return await prisma.friends.create({
+    data: { senderId, receiverId, status: 'pending' },
+  });
 };
 
 const acceptFriendRequest = async (requestId, userId) => {
-  const pool = getPool();
+  const req = await prisma.friends.findFirst({
+    where: { id: requestId, receiverId: userId, status: 'pending' },
+  });
+  if (!req) return null;
 
-  const result = await pool
-    .request()
-    .input('requestId', sql.Int, requestId)
-    .input('userId', sql.Int, userId)
-    .query(`
-      UPDATE Friends
-      SET status = 'accepted'
-      OUTPUT INSERTED.*
-      WHERE id = @requestId 
-        AND receiverId = @userId
-        AND status = 'pending'
-    `);
-
-  return result.recordset[0];
+  return await prisma.friends.update({
+    where: { id: requestId },
+    data: { status: 'accepted' },
+  });
 };
 
 const rejectFriendRequest = async (requestId, userId) => {
-  const pool = getPool();
+  const req = await prisma.friends.findFirst({
+    where: { id: requestId, receiverId: userId, status: 'pending' },
+  });
+  if (!req) return null;
 
-  const result = await pool
-    .request()
-    .input('requestId', sql.Int, requestId)
-    .input('userId', sql.Int, userId)
-    .query(`
-      UPDATE Friends
-      SET status = 'rejected'
-      OUTPUT INSERTED.*
-      WHERE id = @requestId
-        AND receiverId = @userId
-        AND status = 'pending'
-    `);
-
-  return result.recordset[0];
+  return await prisma.friends.update({
+    where: { id: requestId },
+    data: { status: 'rejected' },
+  });
 };
 
 const removeFriend = async (requestId, userId) => {
-  const pool = getPool();
+  const req = await prisma.friends.findFirst({
+    where: {
+      id: requestId,
+      OR: [{ senderId: userId }, { receiverId: userId }],
+    },
+  });
+  if (!req) return null;
 
-  const result = await pool
-    .request()
-    .input('requestId', sql.Int, requestId)
-    .input('userId', sql.Int, userId)
-    .query(`
-      DELETE FROM Friends
-      OUTPUT DELETED.*
-      WHERE id = @requestId
-        AND (senderId = @userId OR receiverId = @userId)
-    `);
-
-  return result.recordset[0];
+  return await prisma.friends.delete({
+    where: { id: requestId },
+  });
 };
 
 module.exports = {

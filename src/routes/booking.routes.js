@@ -4,9 +4,11 @@ const {
   createBooking,
   getMyBookings,
   getAllBookings,
+  getProviderBookings,
   updateBookingStatus,
   cancelMyBooking,
-  getProviderBookings,
+  confirmBooking,
+  rejectBooking,
 } = require('../controllers/booking.controller');
 
 const {
@@ -16,20 +18,42 @@ const {
 
 const router = express.Router();
 
-/*
-  User đặt tour
-*/
+/**
+ * @swagger
+ * /bookings:
+ *   post:
+ *     summary: Khách hàng đặt tour
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       201:
+ *         description: Created
+ */
 router.post('/', protect, authorizeRoles('user'), createBooking);
-
-/*
-  User xem booking của mình
-*/
+/**
+ * @swagger
+ * /bookings/my-bookings:
+ *   get:
+ *     summary: Danh sách đặt tour của tôi (Customer)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/my-bookings', protect, authorizeRoles('user'), getMyBookings);
 
-/*
-  Provider xem booking của các tour do mình đăng
-  Route /provider phải để trước /:id nếu sau này có route /:id
-*/
+/**
+ * @swagger
+ * /bookings/provider:
+ *   get:
+ *     summary: Danh sách đặt tour của provider (Provider)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get(
   '/provider',
   protect,
@@ -37,19 +61,73 @@ router.get(
   getProviderBookings
 );
 
-/*
-  User hủy booking của mình
-*/
+/**
+ * @swagger
+ * /bookings/{id}/cancel:
+ *   put:
+ *     summary: Hủy tour (Customer)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.put('/:id/cancel', protect, authorizeRoles('user'), cancelMyBooking);
 
-/*
-  Manager xem toàn bộ booking
-*/
+/**
+ * @swagger
+ * /bookings:
+ *   get:
+ *     summary: Lấy tất cả đặt chỗ (Admin)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/', protect, authorizeRoles('manager'), getAllBookings);
 
-/*
-  Manager cập nhật trạng thái booking
-*/
+/**
+ * @swagger
+ * /bookings/{id}/status:
+ *   put:
+ *     summary: Cập nhật trạng thái (Admin)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.put('/:id/status', protect, authorizeRoles('manager'), updateBookingStatus);
+
+/**
+ * @swagger
+ * /bookings/{id}/confirm:
+ *   put:
+ *     summary: Xác nhận đặt chỗ (Provider)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put('/:id/confirm', protect, authorizeRoles('provider'), confirmBooking);
+
+/**
+ * @swagger
+ * /bookings/{id}/reject:
+ *   put:
+ *     summary: Từ chối đặt chỗ (Provider)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put('/:id/reject', protect, authorizeRoles('provider'), rejectBooking);
 
 module.exports = router;

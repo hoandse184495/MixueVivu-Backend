@@ -1,73 +1,45 @@
-const { sql, getPool } = require('../config/db');
+const { prisma } = require('../config/db');
 
 const createContact = async ({ userId, subject, message }) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .input('subject', sql.NVarChar, subject)
-    .input('message', sql.NVarChar, message)
-    .query(`
-      INSERT INTO Contacts (userId, subject, message, status)
-      OUTPUT INSERTED.*
-      VALUES (@userId, @subject, @message, 'pending')
-    `);
-
-  return result.recordset[0];
+  return await prisma.contacts.create({
+    data: {
+      userId,
+      subject,
+      message,
+      status: 'pending',
+    },
+  });
 };
 
 const getMyContacts = async (userId) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .query(`
-      SELECT *
-      FROM Contacts
-      WHERE userId = @userId
-      ORDER BY createdAt DESC
-    `);
-
-  return result.recordset;
+  return await prisma.contacts.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+  });
 };
 
 const getAllContacts = async () => {
-  const pool = getPool();
+  const contacts = await prisma.contacts.findMany({
+    include: { Users: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool.request().query(`
-    SELECT 
-      c.*,
-      u.fullName AS userName,
-      u.email AS userEmail,
-      u.phone AS userPhone
-    FROM Contacts c
-    JOIN Users u ON c.userId = u.id
-    ORDER BY c.createdAt DESC
-  `);
-
-  return result.recordset;
+  return contacts.map((c) => ({
+    ...c,
+    userName: c.Users?.fullName,
+    userEmail: c.Users?.email,
+    userPhone: c.Users?.phone,
+  }));
 };
 
 const replyContact = async ({ id, reply, status }) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('id', sql.Int, id)
-    .input('reply', sql.NVarChar, reply || '')
-    .input('status', sql.NVarChar, status || 'replied')
-    .query(`
-      UPDATE Contacts
-      SET
-        reply = @reply,
-        status = @status
-      OUTPUT INSERTED.*
-      WHERE id = @id
-    `);
-
-  return result.recordset[0];
+  return await prisma.contacts.update({
+    where: { id },
+    data: {
+      reply: reply || '',
+      status: status || 'replied',
+    },
+  });
 };
 
 module.exports = {

@@ -1,4 +1,4 @@
-const { sql, getPool } = require('../config/db');
+const { prisma } = require('../config/db');
 
 const createBooking = async ({
   userId,
@@ -9,19 +9,12 @@ const createBooking = async ({
   departureDate,
   note,
 }) => {
-  const pool = getPool();
-
-  const tourResult = await pool
-    .request()
-    .input('tourId', sql.Int, tourId)
-    .query(`
-      SELECT *
-      FROM Tours
-      WHERE id = @tourId
-        AND status = 'approved'
-    `);
-
-  const tour = tourResult.recordset[0];
+  const tour = await prisma.tours.findFirst({
+    where: {
+      id: tourId,
+      status: 'approved',
+    },
+  });
 
   if (!tour) {
     return null;
@@ -33,146 +26,136 @@ const createBooking = async ({
   const commissionAmount = totalPrice * commissionRate;
   const providerAmount = totalPrice - commissionAmount;
 
-  const bookingResult = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .input('tourId', sql.Int, tourId)
-    .input('fullName', sql.NVarChar, fullName)
-    .input('phone', sql.NVarChar, phone)
-    .input('numberOfPeople', sql.Int, numberOfPeople)
-    .input('departureDate', sql.Date, departureDate || null)
-    .input('totalPrice', sql.Decimal(18, 2), totalPrice)
-    .input('commissionAmount', sql.Decimal(18, 2), commissionAmount)
-    .input('providerAmount', sql.Decimal(18, 2), providerAmount)
-    .input('note', sql.NVarChar, note || '')
-    .query(`
-      INSERT INTO Bookings
-      (
-        userId, tourId, fullName, phone,
-        numberOfPeople, departureDate, totalPrice,
-        commissionAmount, providerAmount,
-        note, status
-      )
-      OUTPUT INSERTED.*
-      VALUES
-      (
-        @userId, @tourId, @fullName, @phone,
-        @numberOfPeople, @departureDate, @totalPrice,
-        @commissionAmount, @providerAmount,
-        @note, 'pending'
-      )
-    `);
-
-  return bookingResult.recordset[0];
+  return await prisma.bookings.create({
+    data: {
+      userId,
+      tourId,
+      fullName,
+      phone,
+      numberOfPeople,
+      departureDate: departureDate ? new Date(departureDate) : null,
+      totalPrice,
+      commissionAmount,
+      providerAmount,
+      note: note || '',
+      status: 'pending',
+    },
+  });
 };
 
 const getMyBookings = async (userId) => {
-  const pool = getPool();
+  const bookings = await prisma.bookings.findMany({
+    where: { userId },
+    include: { Tours: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .query(`
-      SELECT 
-        b.*,
-        b.numberOfPeople AS numPeople,
-        t.title AS tourTitle,
-        t.location AS tourLocation,
-        t.image AS tourImage,
-        t.duration AS tourDuration,
-        t.startDate AS tourStartDate,
-        t.endDate AS tourEndDate,
-        t.price AS tourPrice
-      FROM Bookings b
-      JOIN Tours t ON b.tourId = t.id
-      WHERE b.userId = @userId
-      ORDER BY b.createdAt DESC
-    `);
-
-  return result.recordset;
+  return bookings.map((b) => ({
+    ...b,
+    numPeople: b.numberOfPeople,
+    tourTitle: b.Tours?.title,
+    tourLocation: b.Tours?.location,
+    tourImage: b.Tours?.image,
+    tourDuration: b.Tours?.duration,
+    tourStartDate: b.Tours?.startDate,
+    tourEndDate: b.Tours?.endDate,
+    tourPrice: b.Tours?.price,
+  }));
 };
 
 const getAllBookings = async () => {
-  const pool = getPool();
+  const bookings = await prisma.bookings.findMany({
+    include: {
+      Users: true,
+      Tours: {
+        include: {
+          Users: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool.request().query(`
-    SELECT 
-      b.*,
-      u.fullName AS userName,
-      u.email AS userEmail,
-      u.phone AS userPhone,
-      t.title AS tourTitle,
-      t.location AS tourLocation,
-      p.fullName AS providerName,
-      p.email AS providerEmail
-    FROM Bookings b
-    JOIN Users u ON b.userId = u.id
-    JOIN Tours t ON b.tourId = t.id
-    LEFT JOIN Users p ON t.providerId = p.id
-    ORDER BY b.createdAt DESC
-  `);
-
-  return result.recordset;
+  return bookings.map((b) => ({
+    ...b,
+    userName: b.Users?.fullName,
+    userEmail: b.Users?.email,
+    userPhone: b.Users?.phone,
+    tourTitle: b.Tours?.title,
+    tourLocation: b.Tours?.location,
+    providerName: b.Tours?.Users?.fullName,
+    providerEmail: b.Tours?.Users?.email,
+  }));
 };
 
 const getProviderBookings = async (providerId) => {
-  const pool = getPool();
+  const bookings = await prisma.bookings.findMany({
+    where: {
+      Tours: { providerId },
+    },
+    include: {
+      Tours: true,
+      Users: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('providerId', sql.Int, providerId)
-    .query(`
-      SELECT 
-        b.*,
-        t.title AS tourTitle,
-        t.location AS tourLocation,
-        t.image AS tourImage,
-        t.price AS tourPrice,
-        u.fullName AS customerName,
-        u.email AS customerEmail,
-        u.phone AS customerPhone
-      FROM Bookings b
-      JOIN Tours t ON b.tourId = t.id
-      JOIN Users u ON b.userId = u.id
-      WHERE t.providerId = @providerId
-      ORDER BY b.createdAt DESC
-    `);
-
-  return result.recordset;
+  return bookings.map((b) => ({
+    ...b,
+    tourTitle: b.Tours?.title,
+    tourLocation: b.Tours?.location,
+    tourImage: b.Tours?.image,
+    tourPrice: b.Tours?.price,
+    customerName: b.Users?.fullName,
+    customerEmail: b.Users?.email,
+    customerPhone: b.Users?.phone,
+  }));
 };
 
 const updateBookingStatus = async (id, status) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('id', sql.Int, id)
-    .input('status', sql.NVarChar, status)
-    .query(`
-      UPDATE Bookings
-      SET status = @status
-      OUTPUT INSERTED.*
-      WHERE id = @id
-    `);
-
-  return result.recordset[0];
+  return await prisma.bookings.update({
+    where: { id },
+    data: { status },
+  });
 };
 
 const cancelMyBooking = async (id, userId) => {
-  const pool = getPool();
+  const booking = await prisma.bookings.findFirst({
+    where: { id, userId },
+  });
 
-  const result = await pool
-    .request()
-    .input('id', sql.Int, id)
-    .input('userId', sql.Int, userId)
-    .query(`
-      UPDATE Bookings
-      SET status = 'cancelled'
-      OUTPUT INSERTED.*
-      WHERE id = @id AND userId = @userId
-    `);
+  if (!booking) return null;
 
-  return result.recordset[0];
+  return await prisma.bookings.update({
+    where: { id },
+    data: { status: 'cancelled' },
+  });
+};
+
+const confirmBooking = async (id, providerId) => {
+  const booking = await prisma.bookings.findFirst({
+    where: { id, Tours: { providerId } },
+  });
+
+  if (!booking) return null;
+
+  return await prisma.bookings.update({
+    where: { id },
+    data: { status: 'confirmed' },
+  });
+};
+
+const rejectBooking = async (id, providerId) => {
+  const booking = await prisma.bookings.findFirst({
+    where: { id, Tours: { providerId } },
+  });
+
+  if (!booking) return null;
+
+  return await prisma.bookings.update({
+    where: { id },
+    data: { status: 'cancelled' },
+  });
 };
 
 module.exports = {
@@ -182,4 +165,6 @@ module.exports = {
   getProviderBookings,
   updateBookingStatus,
   cancelMyBooking,
+  confirmBooking,
+  rejectBooking,
 };

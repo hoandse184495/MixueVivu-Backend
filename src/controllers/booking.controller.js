@@ -64,7 +64,7 @@ const getProviderBookings = async (req, res, next) => {
 const updateBookingStatus = async (req, res, next) => {
   try {
     const booking = await bookingService.updateBookingStatus(
-      req.params.id,
+      Number(req.params.id),
       req.body.status
     );
 
@@ -105,6 +105,44 @@ const cancelMyBooking = async (req, res, next) => {
   }
 };
 
+const confirmBooking = async (req, res, next) => {
+  try {
+    const booking = await bookingService.confirmBooking(Number(req.params.id), req.user.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        message: 'Booking not found or you do not have permission',
+      });
+    }
+
+    res.status(200).json({
+      message: 'Confirm booking successfully',
+      data: booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const rejectBooking = async (req, res, next) => {
+  try {
+    const booking = await bookingService.rejectBooking(Number(req.params.id), req.user.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        message: 'Booking not found or you do not have permission',
+      });
+    }
+
+    res.status(200).json({
+      message: 'Reject booking successfully',
+      data: booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
@@ -112,4 +150,6 @@ module.exports = {
   getProviderBookings,
   updateBookingStatus,
   cancelMyBooking,
+  confirmBooking,
+  rejectBooking,
 };

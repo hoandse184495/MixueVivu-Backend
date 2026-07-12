@@ -11,6 +11,8 @@ const {
   getPendingTours,
   approveTour,
   rejectTour,
+  hideTour,
+  completeTour,
 } = require('../controllers/tour.controller');
 
 const {
@@ -20,56 +22,166 @@ const {
 
 const router = express.Router();
 
-/*
-  User xem danh sách tour đã được duyệt
-*/
+/**
+ * @swagger
+ * /tours:
+ *   get:
+ *     summary: Lấy tất cả Tours
+ *     tags: [Tour]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/', getAllTours);
 
-/*
-  Provider xem tour của chính mình
-  Lưu ý: /my-tours phải đặt trước /:id
-*/
+/**
+ * @swagger
+ * /tours/my-tours:
+ *   get:
+ *     summary: Lấy danh sách tour của tôi (Provider)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/my-tours', protect, authorizeRoles('provider'), getMyTours);
 
-/*
-  Manager xem các tour đang chờ duyệt
-  Lưu ý: /pending phải đặt trước /:id
-*/
+/**
+ * @swagger
+ * /tours/pending:
+ *   get:
+ *     summary: Lấy danh sách tour chờ duyệt (Admin)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/pending', protect, authorizeRoles('manager'), getPendingTours);
 
-/*
-  Xem chi tiết tour
-*/
+/**
+ * @swagger
+ * /tours/{id}:
+ *   get:
+ *     summary: Lấy chi tiết Tour
+ *     tags: [Tour]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.get('/:id', getTourById);
 
-/*
-  Provider đăng tour
-*/
+/**
+ * @swagger
+ * /tours:
+ *   post:
+ *     summary: Tạo Tour mới (Provider)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     responses:
+ *       201:
+ *         description: Created
+ */
 router.post('/', protect, authorizeRoles('provider'), createTour);
 
-/*
-  Provider hoặc manager sửa tour
-*/
+/**
+ * @swagger
+ * /tours/{id}:
+ *   put:
+ *     summary: Cập nhật Tour (Provider/Manager)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.put('/:id', protect, authorizeRoles('provider', 'manager'), updateTour);
 
-/*
-  Provider hoặc manager xóa tour
-*/
+/**
+ * @swagger
+ * /tours/{id}:
+ *   delete:
+ *     summary: Xóa Tour (Provider/Manager)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.delete('/:id', protect, authorizeRoles('provider', 'manager'), deleteTour);
 
-/*
-  Manager duyệt tour
-*/
+/**
+ * @swagger
+ * /tours/{id}/approve:
+ *   put:
+ *     summary: Duyệt Tour (Admin)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.put('/:id/approve', protect, authorizeRoles('manager'), approveTour);
 
-/*
-  Manager từ chối tour
-*/
+/**
+ * @swagger
+ * /tours/{id}/reject:
+ *   put:
+ *     summary: Từ chối Tour (Admin)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
 router.put('/:id/reject', protect, authorizeRoles('manager'), rejectTour);
 
-/*
-  User đánh giá tour
-*/
+/**
+ * @swagger
+ * /tours/{id}/reviews:
+ *   post:
+ *     summary: Thêm Đánh giá
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       201:
+ *         description: Created
+ */
 router.post('/:id/reviews', protect, authorizeRoles('user'), addReview);
+
+/**
+ * @swagger
+ * /tours/{id}/hide:
+ *   put:
+ *     summary: Ẩn Tour (Admin)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put('/:id/hide', protect, authorizeRoles('manager'), hideTour);
+
+/**
+ * @swagger
+ * /tours/{id}/complete:
+ *   put:
+ *     summary: Hoàn thành Tour (Provider)
+ *     tags: [Tour]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put('/:id/complete', protect, authorizeRoles('provider'), completeTour);
 
 module.exports = router;

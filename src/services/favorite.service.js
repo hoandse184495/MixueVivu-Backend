@@ -1,83 +1,48 @@
-const { sql, getPool } = require('../config/db');
+const { prisma } = require('../config/db');
 
 const getMyFavorites = async (userId) => {
-  const pool = getPool();
+  const favorites = await prisma.favorites.findMany({
+    where: { userId },
+    include: { Tours: true },
+    orderBy: { createdAt: 'desc' },
+  });
 
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .query(`
-      SELECT 
-        f.id AS favoriteId,
-        f.createdAt AS favoriteCreatedAt,
-        t.*
-      FROM Favorites f
-      JOIN Tours t ON f.tourId = t.id
-      WHERE f.userId = @userId
-      ORDER BY f.createdAt DESC
-    `);
-
-  return result.recordset;
+  return favorites.map((f) => ({
+    favoriteId: f.id,
+    favoriteCreatedAt: f.createdAt,
+    ...f.Tours,
+  }));
 };
 
 const addFavorite = async (userId, tourId) => {
-  const pool = getPool();
+  const existing = await prisma.favorites.findFirst({
+    where: { userId, tourId },
+  });
 
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .input('tourId', sql.Int, tourId)
-    .query(`
-      IF NOT EXISTS (
-        SELECT 1 FROM Favorites
-        WHERE userId = @userId AND tourId = @tourId
-      )
-      BEGIN
-        INSERT INTO Favorites (userId, tourId)
-        OUTPUT INSERTED.*
-        VALUES (@userId, @tourId)
-      END
-      ELSE
-      BEGIN
-        SELECT *
-        FROM Favorites
-        WHERE userId = @userId AND tourId = @tourId
-      END
-    `);
+  if (existing) {
+    return existing;
+  }
 
-  return result.recordset[0];
+  return await prisma.favorites.create({
+    data: { userId, tourId },
+  });
 };
 
 const removeFavorite = async (userId, tourId) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .input('tourId', sql.Int, tourId)
-    .query(`
-      DELETE FROM Favorites
-      OUTPUT DELETED.*
-      WHERE userId = @userId AND tourId = @tourId
-    `);
-
-  return result.recordset[0];
+  const existing = await checkFavorite(userId, tourId);
+  if (existing) {
+    await prisma.favorites.delete({
+      where: { id: existing.id },
+    });
+    return existing;
+  }
+  return null;
 };
 
 const checkFavorite = async (userId, tourId) => {
-  const pool = getPool();
-
-  const result = await pool
-    .request()
-    .input('userId', sql.Int, userId)
-    .input('tourId', sql.Int, tourId)
-    .query(`
-      SELECT *
-      FROM Favorites
-      WHERE userId = @userId AND tourId = @tourId
-    `);
-
-  return result.recordset[0];
+  return await prisma.favorites.findFirst({
+    where: { userId, tourId },
+  });
 };
 
 module.exports = {
