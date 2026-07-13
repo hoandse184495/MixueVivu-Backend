@@ -106,9 +106,11 @@ const getProviderBookings = async (providerId) => {
     tourLocation: b.Tours?.location,
     tourImage: b.Tours?.image,
     tourPrice: b.Tours?.price,
-    customerName: b.Users?.fullName,
-    customerEmail: b.Users?.email,
-    customerPhone: b.Users?.phone,
+    tourPrice: b.Tours?.price,
+    userName: b.Users?.fullName,
+    userEmail: b.Users?.email,
+    userPhone: b.Users?.phone,
+    numPeople: b.numberOfPeople,
   }));
 };
 
@@ -158,6 +160,19 @@ const rejectBooking = async (id, providerId) => {
   });
 };
 
+const completeBooking = async (id, providerId) => {
+  const booking = await prisma.bookings.findFirst({
+    where: { id, Tours: { providerId } },
+  });
+
+  if (!booking) return null;
+
+  return await prisma.bookings.update({
+    where: { id },
+    data: { status: 'completed' },
+  });
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
@@ -167,4 +182,5 @@ module.exports = {
   cancelMyBooking,
   confirmBooking,
   rejectBooking,
+  completeBooking,
 };

@@ -9,6 +9,7 @@ const {
   cancelMyBooking,
   confirmBooking,
   rejectBooking,
+  completeBooking,
 } = require('../controllers/booking.controller');
 
 const {
@@ -129,5 +130,19 @@ router.put('/:id/confirm', protect, authorizeRoles('provider'), confirmBooking);
  *         description: Success
  */
 router.put('/:id/reject', protect, authorizeRoles('provider'), rejectBooking);
+
+/**
+ * @swagger
+ * /bookings/{id}/complete:
+ *   put:
+ *     summary: Hoàn thành đặt chỗ (Provider)
+ *     tags: [Booking]
+ *     security: [{ BearerAuth: [] }]
+ *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
+ *     responses:
+ *       200:
+ *         description: Success
+ */
+router.put('/:id/complete', protect, authorizeRoles('provider'), completeBooking);
 
 module.exports = router;

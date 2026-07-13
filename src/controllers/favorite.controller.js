@@ -23,7 +23,7 @@ const addFavorite = async (req, res, next) => {
       });
     }
 
-    const favorite = await favoriteService.addFavorite(req.user.id, tourId);
+    const favorite = await favoriteService.addFavorite(req.user.id, Number(tourId));
 
     res.status(201).json({
       message: 'Add favorite successfully',
@@ -38,7 +38,7 @@ const removeFavorite = async (req, res, next) => {
   try {
     const favorite = await favoriteService.removeFavorite(
       req.user.id,
-      req.params.tourId
+      Number(req.params.tourId)
     );
 
     if (!favorite) {
@@ -59,7 +59,7 @@ const checkFavorite = async (req, res, next) => {
   try {
     const favorite = await favoriteService.checkFavorite(
       req.user.id,
-      req.params.tourId
+      Number(req.params.tourId)
     );
 
     res.status(200).json({

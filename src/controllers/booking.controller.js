@@ -143,6 +143,25 @@ const rejectBooking = async (req, res, next) => {
   }
 };
 
+const completeBooking = async (req, res, next) => {
+  try {
+    const booking = await bookingService.completeBooking(Number(req.params.id), req.user.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        message: 'Booking not found or you do not have permission',
+      });
+    }
+
+    res.status(200).json({
+      message: 'Complete booking successfully',
+      data: booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createBooking,
   getMyBookings,
@@ -152,4 +171,5 @@ module.exports = {
   cancelMyBooking,
   confirmBooking,
   rejectBooking,
+  completeBooking,
 };
