@@ -22,6 +22,7 @@ model Bookings {
   createdAt        DateTime?  @default(now(), map: "DF__Bookings__create__5DCAEF64") @db.DateTime
   commissionAmount Decimal?   @default(0, map: "DF__Bookings__commis__7D439ABD") @db.Decimal(18, 2)
   providerAmount   Decimal?   @default(0, map: "DF__Bookings__provid__7E37BEF6") @db.Decimal(18, 2)
+  slotsDeducted    Boolean    @default(false)
   Tours            Tours      @relation(fields: [tourId], references: [id], onUpdate: NoAction, map: "FK__Bookings__tourId__5FB337D6")
   Users            Users      @relation(fields: [userId], references: [id], onUpdate: NoAction, map: "FK__Bookings__userId__5EBF139D")
   Payments         Payments[]

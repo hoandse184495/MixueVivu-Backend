@@ -1,5 +1,78 @@
 const { prisma } = require('../config/db');
 
+const createHttpError = (message, statusCode = 400) =>
+  Object.assign(new Error(message), { statusCode });
+
+const getBookingForSlotUpdate = async (tx, id, providerId) => {
+  return await tx.bookings.findFirst({
+    where: {
+      id: Number(id),
+      ...(providerId ? { Tours: { providerId } } : {}),
+    },
+    include: { Tours: true },
+  });
+};
+
+const confirmBookingWithSlotDeduction = async (tx, id, providerId) => {
+  const booking = await getBookingForSlotUpdate(tx, id, providerId);
+  if (!booking) return null;
+
+  if (booking.status === 'cancelled') {
+    throw createHttpError('Cancelled bookings cannot be confirmed');
+  }
+
+  if (!booking.slotsDeducted) {
+    const peopleCount = Number(booking.numberOfPeople || 0);
+    const slotUpdate = await tx.tours.updateMany({
+      where: {
+        id: booking.tourId,
+        availableSlots: { gte: peopleCount },
+      },
+      data: {
+        availableSlots: { decrement: peopleCount },
+      },
+    });
+
+    if (slotUpdate.count === 0) {
+      throw createHttpError('Not enough available slots for this booking');
+    }
+  }
+
+  const nextStatus = booking.status === 'completed' ? 'completed' : 'confirmed';
+
+  return await tx.bookings.update({
+    where: { id: booking.id },
+    data: { status: nextStatus, slotsDeducted: true },
+  });
+};
+
+const cancelBookingWithSlotRestore = async (tx, id, providerId) => {
+  const booking = await getBookingForSlotUpdate(tx, id, providerId);
+  if (!booking) return null;
+
+  if (booking.status === 'cancelled') {
+    return booking;
+  }
+
+  if (booking.status === 'completed') {
+    throw createHttpError('Completed bookings cannot be cancelled');
+  }
+
+  if (booking.slotsDeducted) {
+    await tx.tours.update({
+      where: { id: booking.tourId },
+      data: {
+        availableSlots: { increment: Number(booking.numberOfPeople || 0) },
+      },
+    });
+  }
+
+  return await tx.bookings.update({
+    where: { id: booking.id },
+    data: { status: 'cancelled', slotsDeducted: false },
+  });
+};
+
 const createBooking = async ({
   userId,
   tourId,
@@ -20,7 +93,16 @@ const createBooking = async ({
     return null;
   }
 
-  const totalPrice = Number(tour.price) * Number(numberOfPeople);
+  const peopleCount = Number(numberOfPeople);
+  if (!Number.isInteger(peopleCount) || peopleCount <= 0) {
+    throw createHttpError('Number of people must be a positive whole number');
+  }
+
+  if (Number(tour.availableSlots || 0) < peopleCount) {
+    throw createHttpError('Not enough available slots for this tour');
+  }
+
+  const totalPrice = Number(tour.price) * peopleCount;
 
   const commissionRate = Number(tour.commissionRate) || 0.1;
   const commissionAmount = totalPrice * commissionRate;
@@ -32,13 +114,26 @@ const createBooking = async ({
       tourId,
       fullName,
       phone,
-      numberOfPeople,
+      numberOfPeople: peopleCount,
       departureDate: departureDate ? new Date(departureDate) : null,
       totalPrice,
       commissionAmount,
       providerAmount,
+      slotsDeducted: false,
       note: note || '',
       status: 'pending',
+      Payments: {
+        create: {
+          userId,
+          amount: totalPrice,
+          method: 'bank_transfer',
+          status: 'pending',
+          note: 'Waiting for customer payment confirmation',
+        },
+      },
+    },
+    include: {
+      Payments: true,
     },
   });
 };
@@ -60,6 +155,7 @@ const getMyBookings = async (userId) => {
     tourStartDate: b.Tours?.startDate,
     tourEndDate: b.Tours?.endDate,
     tourPrice: b.Tours?.price,
+    tourAvailableSlots: b.Tours?.availableSlots,
   }));
 };
 
@@ -83,6 +179,7 @@ const getAllBookings = async () => {
     userPhone: b.Users?.phone,
     tourTitle: b.Tours?.title,
     tourLocation: b.Tours?.location,
+    tourAvailableSlots: b.Tours?.availableSlots,
     providerName: b.Tours?.Users?.fullName,
     providerEmail: b.Tours?.Users?.email,
   }));
@@ -106,7 +203,7 @@ const getProviderBookings = async (providerId) => {
     tourLocation: b.Tours?.location,
     tourImage: b.Tours?.image,
     tourPrice: b.Tours?.price,
-    tourPrice: b.Tours?.price,
+    tourAvailableSlots: b.Tours?.availableSlots,
     userName: b.Users?.fullName,
     userEmail: b.Users?.email,
     userPhone: b.Users?.phone,
@@ -115,61 +212,92 @@ const getProviderBookings = async (providerId) => {
 };
 
 const updateBookingStatus = async (id, status) => {
+  if (status === 'confirmed') {
+    return await prisma.$transaction((tx) =>
+      confirmBookingWithSlotDeduction(tx, Number(id))
+    );
+  }
+
+  if (status === 'cancelled') {
+    return await prisma.$transaction((tx) =>
+      cancelBookingWithSlotRestore(tx, Number(id))
+    );
+  }
+
   return await prisma.bookings.update({
-    where: { id },
+    where: { id: Number(id) },
     data: { status },
   });
 };
 
 const cancelMyBooking = async (id, userId) => {
-  const booking = await prisma.bookings.findFirst({
-    where: { id, userId },
-  });
+  return await prisma.$transaction(async (tx) => {
+    const booking = await tx.bookings.findFirst({
+      where: { id: Number(id), userId },
+    });
 
-  if (!booking) return null;
+    if (!booking) return null;
 
-  return await prisma.bookings.update({
-    where: { id },
-    data: { status: 'cancelled' },
+    return await cancelBookingWithSlotRestore(tx, booking.id);
   });
 };
 
 const confirmBooking = async (id, providerId) => {
-  const booking = await prisma.bookings.findFirst({
-    where: { id, Tours: { providerId } },
-  });
-
-  if (!booking) return null;
-
-  return await prisma.bookings.update({
-    where: { id },
-    data: { status: 'confirmed' },
-  });
+  return await prisma.$transaction((tx) =>
+    confirmBookingWithSlotDeduction(tx, Number(id), providerId)
+  );
 };
 
 const rejectBooking = async (id, providerId) => {
-  const booking = await prisma.bookings.findFirst({
-    where: { id, Tours: { providerId } },
-  });
-
-  if (!booking) return null;
-
-  return await prisma.bookings.update({
-    where: { id },
-    data: { status: 'cancelled' },
-  });
+  return await prisma.$transaction((tx) =>
+    cancelBookingWithSlotRestore(tx, Number(id), providerId)
+  );
 };
 
 const completeBooking = async (id, providerId) => {
-  const booking = await prisma.bookings.findFirst({
-    where: { id, Tours: { providerId } },
-  });
+  return await prisma.$transaction(async (tx) => {
+    let booking = await tx.bookings.findFirst({
+      where: { id: Number(id), Tours: { providerId } },
+      include: { Tours: true, Payouts: true },
+    });
 
-  if (!booking) return null;
+    if (!booking) return null;
 
-  return await prisma.bookings.update({
-    where: { id },
-    data: { status: 'completed' },
+    if (booking.status === 'pending') {
+      throw createHttpError('Booking must be confirmed before completion');
+    }
+
+    if (booking.status === 'cancelled') {
+      throw createHttpError('Cancelled bookings cannot be completed');
+    }
+
+    if (!booking.slotsDeducted) {
+      await confirmBookingWithSlotDeduction(tx, booking.id, providerId);
+      booking = await tx.bookings.findFirst({
+        where: { id: Number(id), Tours: { providerId } },
+        include: { Tours: true, Payouts: true },
+      });
+    }
+
+    const completedBooking = await tx.bookings.update({
+      where: { id: Number(id) },
+      data: { status: 'completed' },
+    });
+
+    if (booking?.Tours?.providerId && booking.Payouts.length === 0) {
+      await tx.payouts.create({
+        data: {
+          bookingId: booking.id,
+          providerId: booking.Tours.providerId,
+          amount: booking.totalPrice || 0,
+          commissionAmount: booking.commissionAmount || 0,
+          providerAmount: booking.providerAmount || 0,
+          status: 'pending',
+        },
+      });
+    }
+
+    return completedBooking;
   });
 };
 
@@ -183,4 +311,6 @@ module.exports = {
   confirmBooking,
   rejectBooking,
   completeBooking,
+  confirmBookingWithSlotDeduction,
+  cancelBookingWithSlotRestore,
 };

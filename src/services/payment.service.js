@@ -1,4 +1,5 @@
 const { prisma } = require('../config/db');
+const bookingService = require('./booking.service');
 
 const getAllPayments = async () => {
   return await prisma.payments.findMany({
@@ -23,32 +24,29 @@ const getMyPayments = async (userId) => {
 };
 
 const confirmPayment = async (id) => {
-  const payment = await prisma.payments.update({
-    where: { id },
-    data: { status: 'paid', paidAt: new Date() },
-  });
+  return await prisma.$transaction(async (tx) => {
+    const payment = await tx.payments.update({
+      where: { id },
+      data: { status: 'paid', paidAt: new Date() },
+    });
 
-  // Also update booking status to confirmed
-  await prisma.bookings.update({
-    where: { id: payment.bookingId },
-    data: { status: 'confirmed' },
-  });
+    await bookingService.confirmBookingWithSlotDeduction(tx, payment.bookingId);
 
-  return payment;
+    return payment;
+  });
 };
 
 const refundPayment = async (id, note) => {
-  const payment = await prisma.payments.update({
-    where: { id },
-    data: { status: 'refunded', note: note || 'Refunded by admin' },
-  });
+  return await prisma.$transaction(async (tx) => {
+    const payment = await tx.payments.update({
+      where: { id },
+      data: { status: 'refunded', note: note || 'Refunded by admin' },
+    });
 
-  await prisma.bookings.update({
-    where: { id: payment.bookingId },
-    data: { status: 'cancelled' },
-  });
+    await bookingService.cancelBookingWithSlotRestore(tx, payment.bookingId);
 
-  return payment;
+    return payment;
+  });
 };
 
 module.exports = {
