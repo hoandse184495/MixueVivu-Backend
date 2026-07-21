@@ -10,6 +10,7 @@ const migrations = [
   'add_guides.sql',
   'add_provider_approval.sql',
   'expand_image_url_columns.sql',
+  'add_notifications.sql',
   'seed_categories.sql',
 ];
 

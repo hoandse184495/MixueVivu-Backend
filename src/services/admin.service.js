@@ -1,4 +1,5 @@
 const { prisma } = require('../config/db');
+const bcrypt = require('bcryptjs');
 
 // ========== User Management ==========
 
@@ -49,6 +50,118 @@ const unblockUser = async (id) => {
   return await prisma.users.update({
     where: { id },
     data: { isActive: true },
+  });
+};
+
+const getProviderStatus = (role, providerStatus) =>
+  role === 'provider' ? providerStatus || 'pending' : 'approved';
+
+const createUser = async ({
+  fullName,
+  email,
+  password,
+  phone,
+  role = 'user',
+  companyName,
+  companyAddress,
+  businessLicense,
+  description,
+  providerStatus,
+}) => {
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  return await prisma.users.create({
+    data: {
+      fullName,
+      email,
+      password: hashedPassword,
+      phone: phone || '',
+      role,
+      providerStatus: getProviderStatus(role, providerStatus),
+      providerRejectReason: '',
+      companyName: role === 'provider' ? companyName || '' : null,
+      companyAddress: role === 'provider' ? companyAddress || '' : null,
+      businessLicense: role === 'provider' ? businessLicense || '' : null,
+      description: role === 'provider' ? description || '' : null,
+      isActive: true,
+    },
+    select: {
+      id: true, fullName: true, email: true, phone: true, avatar: true,
+      role: true, isActive: true, companyName: true, companyAddress: true,
+      businessLicense: true, description: true, providerStatus: true,
+      providerRejectReason: true, createdAt: true,
+    },
+  });
+};
+
+const updateUser = async (
+  id,
+  {
+    fullName,
+    email,
+    password,
+    phone,
+    role,
+    isActive,
+    companyName,
+    companyAddress,
+    businessLicense,
+    description,
+    providerStatus,
+    providerRejectReason,
+  }
+) => {
+  const data = {};
+
+  if (fullName !== undefined) data.fullName = fullName;
+  if (email !== undefined) data.email = email;
+  if (phone !== undefined) data.phone = phone || '';
+  if (role !== undefined) data.role = role;
+  if (isActive !== undefined) data.isActive = Boolean(isActive);
+  if (password) data.password = await bcrypt.hash(password, 10);
+
+  const nextRole = role || undefined;
+  if (nextRole === 'provider') {
+    data.providerStatus = providerStatus || 'pending';
+    data.providerRejectReason = providerRejectReason || '';
+    data.companyName = companyName || '';
+    data.companyAddress = companyAddress || '';
+    data.businessLicense = businessLicense || '';
+    data.description = description || '';
+  } else if (nextRole === 'user' || nextRole === 'manager') {
+    data.providerStatus = 'approved';
+    data.providerRejectReason = null;
+    data.companyName = null;
+    data.companyAddress = null;
+    data.businessLicense = null;
+    data.description = null;
+  } else {
+    if (providerStatus !== undefined) data.providerStatus = providerStatus;
+    if (providerRejectReason !== undefined) data.providerRejectReason = providerRejectReason || '';
+    if (companyName !== undefined) data.companyName = companyName || '';
+    if (companyAddress !== undefined) data.companyAddress = companyAddress || '';
+    if (businessLicense !== undefined) data.businessLicense = businessLicense || '';
+    if (description !== undefined) data.description = description || '';
+  }
+
+  return await prisma.users.update({
+    where: { id },
+    data,
+    select: {
+      id: true, fullName: true, email: true, phone: true, avatar: true,
+      role: true, isActive: true, companyName: true, companyAddress: true,
+      businessLicense: true, description: true, providerStatus: true,
+      providerRejectReason: true, createdAt: true,
+    },
+  });
+};
+
+const deleteUser = async (id) => {
+  await prisma.refreshTokens.deleteMany({ where: { userId: id } });
+  await prisma.notifications.deleteMany({ where: { userId: id } });
+
+  return await prisma.users.delete({
+    where: { id },
   });
 };
 
@@ -166,6 +279,9 @@ const getTopTours = async (limit = 10) => {
 module.exports = {
   getAllUsers,
   getUserById,
+  createUser,
+  updateUser,
+  deleteUser,
   blockUser,
   unblockUser,
   approveProvider,

@@ -1,4 +1,37 @@
 const { prisma } = require("../config/db");
+const notificationService = require('./notification.service');
+
+const createTourStatusNotification = async (client, tour, status, userId) => {
+  if (!tour || !userId) return;
+
+  const notifications = {
+    approved: {
+      title: 'Tour đã được duyệt',
+      message: `Tour ${tour.title} đã được manager duyệt và hiển thị cho khách đặt.`,
+    },
+    rejected: {
+      title: 'Tour bị từ chối',
+      message: `Tour ${tour.title} đã bị từ chối. Lý do: ${tour.rejectReason || 'Chưa có lý do cụ thể'}.`,
+    },
+    completed: {
+      title: 'Tour đã hoàn thành',
+      message: `Tour ${tour.title} đã được đánh dấu hoàn thành.`,
+    },
+  };
+  const notification = notifications[status];
+  if (!notification) return;
+
+  await notificationService.createNotification(
+    {
+      userId,
+      tourId: tour.id,
+      type: `tour_${status}`,
+      status,
+      ...notification,
+    },
+    client
+  );
+};
 
 const getAllTours = async ({
   search,
@@ -252,16 +285,28 @@ const getPendingTours = async () => {
 };
 
 const approveTour = async (id) => {
-  return await prisma.tours.update({
-    where: { id },
-    data: { status: 'approved', rejectReason: null },
+  return await prisma.$transaction(async (tx) => {
+    const tour = await tx.tours.update({
+      where: { id },
+      data: { status: 'approved', rejectReason: null },
+    });
+
+    await createTourStatusNotification(tx, tour, 'approved', tour.providerId);
+
+    return tour;
   });
 };
 
 const rejectTour = async (id, rejectReason) => {
-  return await prisma.tours.update({
-    where: { id },
-    data: { status: 'rejected', rejectReason: rejectReason || '' },
+  return await prisma.$transaction(async (tx) => {
+    const tour = await tx.tours.update({
+      where: { id },
+      data: { status: 'rejected', rejectReason: rejectReason || '' },
+    });
+
+    await createTourStatusNotification(tx, tour, 'rejected', tour.providerId);
+
+    return tour;
   });
 };
 
@@ -273,14 +318,33 @@ const hideTour = async (id) => {
 };
 
 const completeTour = async (id, providerId) => {
-  const tour = await prisma.tours.findFirst({
-    where: { id, providerId },
-  });
-  if (!tour) return null;
+  return await prisma.$transaction(async (tx) => {
+    const tour = await tx.tours.findFirst({
+      where: { id, providerId },
+    });
+    if (!tour) return null;
 
-  return await prisma.tours.update({
-    where: { id },
-    data: { status: 'completed' },
+    const updatedTour = await tx.tours.update({
+      where: { id },
+      data: { status: 'completed' },
+    });
+
+    const bookings = await tx.bookings.findMany({
+      where: {
+        tourId: id,
+        status: { in: ['confirmed', 'completed'] },
+      },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
+    await Promise.all(
+      bookings.map((booking) =>
+        createTourStatusNotification(tx, updatedTour, 'completed', booking.userId)
+      )
+    );
+
+    return updatedTour;
   });
 };
 

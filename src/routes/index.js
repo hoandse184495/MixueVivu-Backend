@@ -13,6 +13,7 @@ const paymentRoutes = require('./payment.routes');
 const payoutRoutes = require('./payout.routes');
 const providerRoutes = require('./provider.routes');
 const guideRoutes = require('./guide.routes');
+const notificationRoutes = require('./notification.routes');
 
 const router = express.Router();
 
@@ -29,5 +30,6 @@ router.use('/payments', paymentRoutes);
 router.use('/payouts', payoutRoutes);
 router.use('/provider', providerRoutes);
 router.use('/guides', guideRoutes);
+router.use('/notifications', notificationRoutes);
 
 module.exports = router;

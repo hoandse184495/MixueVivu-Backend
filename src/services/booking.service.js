@@ -1,7 +1,44 @@
 const { prisma } = require('../config/db');
+const notificationService = require('./notification.service');
 
 const createHttpError = (message, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode });
+
+const createBookingStatusNotification = async (tx, booking, status) => {
+  if (!booking?.userId) return;
+
+  const tourTitle = booking.Tours?.title || 'tour của bạn';
+  const notifications = {
+    confirmed: {
+      type: 'booking_confirmed',
+      title: 'Đơn đặt tour đã được xác nhận',
+      message: `Provider đã xác nhận đơn đặt ${tourTitle}. Vui lòng kiểm tra thanh toán để hoàn tất chuyến đi.`,
+    },
+    cancelled: {
+      type: 'booking_rejected',
+      title: 'Đơn đặt tour bị từ chối',
+      message: `Đơn đặt ${tourTitle} đã bị từ chối hoặc hủy. Bạn có thể đặt tour khác phù hợp hơn.`,
+    },
+    completed: {
+      type: 'booking_completed',
+      title: 'Đặt tour thành công',
+      message: `Đơn đặt ${tourTitle} đã hoàn thành sau khi thanh toán được xác nhận.`,
+    },
+  };
+  const notification = notifications[status];
+  if (!notification) return;
+
+  await notificationService.createNotification(
+    {
+      userId: booking.userId,
+      bookingId: booking.id,
+      tourId: booking.tourId,
+      status,
+      ...notification,
+    },
+    tx
+  );
+};
 
 const getBookingForSlotUpdate = async (tx, id, providerId) => {
   return await tx.bookings.findFirst({
@@ -13,6 +50,25 @@ const getBookingForSlotUpdate = async (tx, id, providerId) => {
   });
 };
 
+const deductSlotsForBooking = async (tx, booking) => {
+  if (!booking || booking.slotsDeducted) return;
+
+  const peopleCount = Number(booking.numberOfPeople || 0);
+  const slotUpdate = await tx.tours.updateMany({
+    where: {
+      id: booking.tourId,
+      availableSlots: { gte: peopleCount },
+    },
+    data: {
+      availableSlots: { decrement: peopleCount },
+    },
+  });
+
+  if (slotUpdate.count === 0) {
+    throw createHttpError('Not enough available slots for this booking');
+  }
+};
+
 const confirmBookingWithSlotDeduction = async (tx, id, providerId) => {
   const booking = await getBookingForSlotUpdate(tx, id, providerId);
   if (!booking) return null;
@@ -21,32 +77,22 @@ const confirmBookingWithSlotDeduction = async (tx, id, providerId) => {
     throw createHttpError('Cancelled bookings cannot be confirmed');
   }
 
-  if (!booking.slotsDeducted) {
-    const peopleCount = Number(booking.numberOfPeople || 0);
-    const slotUpdate = await tx.tours.updateMany({
-      where: {
-        id: booking.tourId,
-        availableSlots: { gte: peopleCount },
-      },
-      data: {
-        availableSlots: { decrement: peopleCount },
-      },
-    });
-
-    if (slotUpdate.count === 0) {
-      throw createHttpError('Not enough available slots for this booking');
-    }
-  }
-
   const nextStatus = booking.status === 'completed' ? 'completed' : 'confirmed';
 
-  return await tx.bookings.update({
+  const updatedBooking = await tx.bookings.update({
     where: { id: booking.id },
-    data: { status: nextStatus, slotsDeducted: true },
+    data: { status: nextStatus },
+    include: { Tours: true },
   });
+
+  if (nextStatus === 'confirmed' && booking.status !== 'confirmed') {
+    await createBookingStatusNotification(tx, updatedBooking, 'confirmed');
+  }
+
+  return updatedBooking;
 };
 
-const cancelBookingWithSlotRestore = async (tx, id, providerId) => {
+const cancelBookingWithSlotRestore = async (tx, id, providerId, notifyUser = false) => {
   const booking = await getBookingForSlotUpdate(tx, id, providerId);
   if (!booking) return null;
 
@@ -67,10 +113,17 @@ const cancelBookingWithSlotRestore = async (tx, id, providerId) => {
     });
   }
 
-  return await tx.bookings.update({
+  const updatedBooking = await tx.bookings.update({
     where: { id: booking.id },
     data: { status: 'cancelled', slotsDeducted: false },
+    include: { Tours: true },
   });
+
+  if (notifyUser) {
+    await createBookingStatusNotification(tx, updatedBooking, 'cancelled');
+  }
+
+  return updatedBooking;
 };
 
 const createBooking = async ({
@@ -220,7 +273,7 @@ const updateBookingStatus = async (id, status) => {
 
   if (status === 'cancelled') {
     return await prisma.$transaction((tx) =>
-      cancelBookingWithSlotRestore(tx, Number(id))
+      cancelBookingWithSlotRestore(tx, Number(id), undefined, true)
     );
   }
 
@@ -250,15 +303,18 @@ const confirmBooking = async (id, providerId) => {
 
 const rejectBooking = async (id, providerId) => {
   return await prisma.$transaction((tx) =>
-    cancelBookingWithSlotRestore(tx, Number(id), providerId)
+    cancelBookingWithSlotRestore(tx, Number(id), providerId, true)
   );
 };
 
 const completeBooking = async (id, providerId) => {
   return await prisma.$transaction(async (tx) => {
     let booking = await tx.bookings.findFirst({
-      where: { id: Number(id), Tours: { providerId } },
-      include: { Tours: true, Payouts: true },
+      where: {
+        id: Number(id),
+        ...(providerId ? { Tours: { providerId } } : {}),
+      },
+      include: { Tours: true, Payments: true, Payouts: true },
     });
 
     if (!booking) return null;
@@ -271,18 +327,28 @@ const completeBooking = async (id, providerId) => {
       throw createHttpError('Cancelled bookings cannot be completed');
     }
 
+    if (!booking.Payments.some((payment) => payment.status === 'paid')) {
+      throw createHttpError('Booking payment must be paid before completion');
+    }
+
     if (!booking.slotsDeducted) {
-      await confirmBookingWithSlotDeduction(tx, booking.id, providerId);
+      await deductSlotsForBooking(tx, booking);
       booking = await tx.bookings.findFirst({
-        where: { id: Number(id), Tours: { providerId } },
-        include: { Tours: true, Payouts: true },
+        where: {
+          id: Number(id),
+          ...(providerId ? { Tours: { providerId } } : {}),
+        },
+        include: { Tours: true, Payments: true, Payouts: true },
       });
     }
 
     const completedBooking = await tx.bookings.update({
       where: { id: Number(id) },
-      data: { status: 'completed' },
+      data: { status: 'completed', slotsDeducted: true },
+      include: { Tours: true },
     });
+
+    await createBookingStatusNotification(tx, completedBooking, 'completed');
 
     if (booking?.Tours?.providerId && booking.Payouts.length === 0) {
       await tx.payouts.create({

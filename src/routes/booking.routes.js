@@ -135,7 +135,7 @@ router.put('/:id/reject', protect, authorizeRoles('provider'), rejectBooking);
  * @swagger
  * /bookings/{id}/complete:
  *   put:
- *     summary: Hoàn thành đặt chỗ (Provider)
+ *     summary: Hoàn thành đặt chỗ (Manager)
  *     tags: [Booking]
  *     security: [{ BearerAuth: [] }]
  *     parameters: [{ in: path, name: id, required: true, schema: { type: integer } }]
@@ -143,6 +143,6 @@ router.put('/:id/reject', protect, authorizeRoles('provider'), rejectBooking);
  *       200:
  *         description: Success
  */
-router.put('/:id/complete', protect, authorizeRoles('provider'), completeBooking);
+router.put('/:id/complete', protect, authorizeRoles('manager'), completeBooking);
 
 module.exports = router;

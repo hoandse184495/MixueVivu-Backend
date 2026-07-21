@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  getAllUsers, getUserById, blockUser, unblockUser,
+  getAllUsers, getUserById, createUser, updateUser, deleteUser, blockUser, unblockUser,
   approveProvider, rejectProvider,
   getDashboard, getRevenueStats, getBookingStats, getTopTours,
 } = require('../controllers/admin.controller');
@@ -30,6 +30,7 @@ router.use(protect, authorizeRoles('manager'));
  *         description: Success
  */
 router.get('/users', getAllUsers);
+router.post('/users', createUser);
 
 /**
  * @swagger
@@ -49,6 +50,8 @@ router.get('/users', getAllUsers);
  *         description: Success
  */
 router.get('/users/:id', getUserById);
+router.put('/users/:id', updateUser);
+router.delete('/users/:id', deleteUser);
 
 /**
  * @swagger

@@ -150,7 +150,8 @@ const rejectBooking = async (req, res, next) => {
 
 const completeBooking = async (req, res, next) => {
   try {
-    const booking = await bookingService.completeBooking(Number(req.params.id), req.user.id);
+    const providerId = req.user.role === 'provider' ? req.user.id : undefined;
+    const booking = await bookingService.completeBooking(Number(req.params.id), providerId);
 
     if (!booking) {
       return res.status(404).json({
