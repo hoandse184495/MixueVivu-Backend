@@ -18,6 +18,27 @@ const getMyPayments = async (req, res, next) => {
   }
 };
 
+const submitPayment = async (req, res, next) => {
+  try {
+    const payment = await paymentService.submitPayment(
+      Number(req.params.id),
+      req.user.id,
+      {
+        transactionId: req.body.transactionId,
+        note: req.body.note,
+      }
+    );
+
+    if (!payment) {
+      return res.status(404).json({ message: 'Pending payment not found' });
+    }
+
+    res.status(200).json({ message: 'Payment submitted successfully', data: payment });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const confirmPayment = async (req, res, next) => {
   try {
     const payment = await paymentService.confirmPayment(Number(req.params.id));
@@ -38,4 +59,4 @@ const refundPayment = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllPayments, getMyPayments, confirmPayment, refundPayment };
+module.exports = { getAllPayments, getMyPayments, submitPayment, confirmPayment, refundPayment };

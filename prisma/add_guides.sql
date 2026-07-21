@@ -1,0 +1,33 @@
+IF OBJECT_ID('Guides', 'U') IS NULL
+BEGIN
+  CREATE TABLE Guides (
+    id INT IDENTITY(1,1) NOT NULL CONSTRAINT PK_Guides PRIMARY KEY,
+    fullName NVARCHAR(100) NOT NULL,
+    email NVARCHAR(100) NOT NULL,
+    phone NVARCHAR(20) NULL,
+    experience NVARCHAR(MAX) NULL,
+    language NVARCHAR(100) NULL,
+    rating FLOAT NULL CONSTRAINT DF_Guides_rating DEFAULT 0,
+    avatar NVARCHAR(255) NULL,
+    isActive BIT NOT NULL CONSTRAINT DF_Guides_isActive DEFAULT 1,
+    createdAt DATETIME NULL CONSTRAINT DF_Guides_createdAt DEFAULT GETDATE()
+  );
+
+  CREATE UNIQUE INDEX UQ_Guides_email ON Guides(email);
+END;
+
+GO
+
+IF COL_LENGTH('Tours', 'guideId') IS NULL
+BEGIN
+  ALTER TABLE Tours ADD guideId INT NULL;
+END;
+
+GO
+
+IF OBJECT_ID('FK_Tours_Guide', 'F') IS NULL
+BEGIN
+  ALTER TABLE Tours
+  ADD CONSTRAINT FK_Tours_Guide
+  FOREIGN KEY (guideId) REFERENCES Guides(id);
+END;

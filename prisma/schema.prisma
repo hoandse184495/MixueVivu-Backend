@@ -141,7 +141,7 @@ model TourActivities {
   activityTime String? @db.NVarChar(50)
   location     String? @db.NVarChar(100)
   description  String? @db.NVarChar(Max)
-  image        String? @db.NVarChar(255)
+  image        String? @db.NVarChar(2048)
   Tours        Tours   @relation(fields: [tourId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "FK__TourActiv__tourI__59063A47")
 }
 
@@ -159,7 +159,7 @@ model Tours {
   location       String           @db.NVarChar(100)
   price          Decimal          @db.Decimal(18, 2)
   duration       String?          @db.NVarChar(100)
-  image          String?          @db.NVarChar(255)
+  image          String?          @db.NVarChar(2048)
   description    String?          @db.NVarChar(Max)
   category       String?          @db.NVarChar(100)
   categoryId     Int?
@@ -169,6 +169,7 @@ model Tours {
   averageRating  Float?           @default(0, map: "DF__Tours__averageRa__5441852A")
   createdAt      DateTime?        @default(now(), map: "DF__Tours__createdAt__5535A963") @db.DateTime
   providerId     Int?
+  guideId         Int?
   status         String?          @default("pending", map: "DF__Tours__status__797309D9") @db.NVarChar(20)
   rejectReason   String?          @db.NVarChar(Max)
   commissionRate Float?           @default(0.1, map: "DF__Tours__commissio__7A672E12")
@@ -178,6 +179,7 @@ model Tours {
   TourActivities TourActivities[]
   TourImages     TourImages[]
   Categories     Categories?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  Guides          Guides?          @relation(fields: [guideId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   Users          Users?           @relation(fields: [providerId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "FK_Tours_Provider")
 }
 
@@ -190,6 +192,8 @@ model Users {
   avatar                            String?         @db.NVarChar(255)
   role                              String?         @default("user", map: "DF__Users__role__4AB81AF0") @db.NVarChar(20)
   isActive                          Boolean         @default(true)
+  providerStatus                    String?         @default("approved") @db.NVarChar(20)
+  providerRejectReason              String?         @db.NVarChar(Max)
   companyName                       String?         @db.NVarChar(200)
   companyAddress                    String?         @db.NVarChar(500)
   businessLicense                   String?         @db.NVarChar(255)
@@ -205,4 +209,18 @@ model Users {
   RefreshTokens                     RefreshTokens[]
   Reviews                           Reviews[]
   Tours                             Tours[]
+}
+
+model Guides {
+  id         Int       @id @default(autoincrement())
+  fullName   String    @db.NVarChar(100)
+  email      String    @unique @db.NVarChar(100)
+  phone      String?   @db.NVarChar(20)
+  experience String?   @db.NVarChar(Max)
+  language   String?   @db.NVarChar(100)
+  rating     Float?    @default(0)
+  avatar     String?   @db.NVarChar(255)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime? @default(now()) @db.DateTime
+  Tours      Tours[]
 }

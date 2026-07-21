@@ -23,6 +23,23 @@ const getMyPayments = async (userId) => {
   });
 };
 
+const submitPayment = async (id, userId, { transactionId, note }) => {
+  const payment = await prisma.payments.findFirst({
+    where: { id, userId, status: 'pending' },
+  });
+
+  if (!payment) return null;
+
+  return await prisma.payments.update({
+    where: { id },
+    data: {
+      status: 'submitted',
+      transactionId: transactionId || null,
+      note: note || 'Customer submitted bank transfer confirmation',
+    },
+  });
+};
+
 const confirmPayment = async (id) => {
   return await prisma.$transaction(async (tx) => {
     const payment = await tx.payments.update({
@@ -52,6 +69,7 @@ const refundPayment = async (id, note) => {
 module.exports = {
   getAllPayments,
   getMyPayments,
+  submitPayment,
   confirmPayment,
   refundPayment,
 };

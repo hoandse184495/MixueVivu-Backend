@@ -63,6 +63,11 @@ const getProviderBookings = async (req, res, next) => {
 
 const updateBookingStatus = async (req, res, next) => {
   try {
+    const allowedStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+    if (!allowedStatuses.includes(req.body.status)) {
+      return res.status(400).json({ message: 'Invalid booking status' });
+    }
+
     const booking = await bookingService.updateBookingStatus(
       Number(req.params.id),
       req.body.status

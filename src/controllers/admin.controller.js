@@ -39,6 +39,32 @@ const unblockUser = async (req, res, next) => {
   }
 };
 
+const approveProvider = async (req, res, next) => {
+  try {
+    const user = await adminService.approveProvider(Number(req.params.id));
+    if (!user) {
+      return res.status(404).json({ message: 'Provider not found' });
+    }
+    res.status(200).json({ message: 'Provider approved successfully', data: user });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ message: 'User not found' });
+    next(error);
+  }
+};
+
+const rejectProvider = async (req, res, next) => {
+  try {
+    const user = await adminService.rejectProvider(Number(req.params.id), req.body.reason);
+    if (!user) {
+      return res.status(404).json({ message: 'Provider not found' });
+    }
+    res.status(200).json({ message: 'Provider rejected successfully', data: user });
+  } catch (error) {
+    if (error.code === 'P2025') return res.status(404).json({ message: 'User not found' });
+    next(error);
+  }
+};
+
 const getDashboard = async (req, res, next) => {
   try {
     const data = await adminService.getDashboard();
@@ -78,5 +104,6 @@ const getTopTours = async (req, res, next) => {
 
 module.exports = {
   getAllUsers, getUserById, blockUser, unblockUser,
+  approveProvider, rejectProvider,
   getDashboard, getRevenueStats, getBookingStats, getTopTours,
 };

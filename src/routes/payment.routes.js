@@ -1,6 +1,6 @@
 const express = require('express');
 const {
-  getAllPayments, getMyPayments, confirmPayment, refundPayment,
+  getAllPayments, getMyPayments, submitPayment, confirmPayment, refundPayment,
 } = require('../controllers/payment.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
 
@@ -25,6 +25,8 @@ const router = express.Router();
  *         description: Success
  */
 router.get('/my-payments', protect, getMyPayments);
+
+router.put('/:id/submit', protect, authorizeRoles('user'), submitPayment);
 
 /**
  * @swagger

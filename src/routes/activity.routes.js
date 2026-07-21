@@ -59,7 +59,7 @@ router.get('/:id', getActivityById);
  *       201:
  *         description: Created
  */
-router.post('/', protect, authorizeRoles('manager'), createActivity);
+router.post('/', protect, authorizeRoles('manager', 'provider'), createActivity);
 
 /**
  * @swagger
@@ -73,7 +73,7 @@ router.post('/', protect, authorizeRoles('manager'), createActivity);
  *       200:
  *         description: Success
  */
-router.put('/:id', protect, authorizeRoles('manager'), updateActivity);
+router.put('/:id', protect, authorizeRoles('manager', 'provider'), updateActivity);
 
 /**
  * @swagger
@@ -87,6 +87,6 @@ router.put('/:id', protect, authorizeRoles('manager'), updateActivity);
  *       200:
  *         description: Success
  */
-router.delete('/:id', protect, authorizeRoles('manager'), deleteActivity);
+router.delete('/:id', protect, authorizeRoles('manager', 'provider'), deleteActivity);
 
 module.exports = router;

@@ -5,6 +5,8 @@ BEGIN
     CONSTRAINT DF_Bookings_slotsDeducted DEFAULT 0;
 END;
 
+GO
+
 ;WITH SlotUsage AS (
   SELECT tourId, SUM(numberOfPeople) AS bookedSlots
   FROM Bookings
@@ -21,6 +23,8 @@ SET availableSlots =
   END
 FROM Tours
 INNER JOIN SlotUsage ON SlotUsage.tourId = Tours.id;
+
+GO
 
 UPDATE Bookings
 SET slotsDeducted = 1

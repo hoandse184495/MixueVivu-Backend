@@ -13,10 +13,23 @@ const getActivityById = async (id) => {
   });
 };
 
-const createActivity = async (activityData) => {
+const canManageTour = async (tourId, user) => {
+  if (user?.role === 'manager') return true;
+  if (user?.role !== 'provider') return false;
+
+  const tour = await prisma.tours.findFirst({
+    where: { id: Number(tourId), providerId: user.id },
+  });
+
+  return Boolean(tour);
+};
+
+const createActivity = async (activityData, user) => {
+  if (!(await canManageTour(activityData.tourId, user))) return null;
+
   return await prisma.tourActivities.create({
     data: {
-      tourId: activityData.tourId,
+      tourId: Number(activityData.tourId),
       title: activityData.title,
       activityTime: activityData.activityTime || '',
       location: activityData.location || '',
@@ -26,9 +39,14 @@ const createActivity = async (activityData) => {
   });
 };
 
-const updateActivity = async (id, activityData) => {
+const updateActivity = async (id, activityData, user) => {
+  const existing = await prisma.tourActivities.findUnique({
+    where: { id: Number(id) },
+  });
+  if (!existing || !(await canManageTour(existing.tourId, user))) return null;
+
   return await prisma.tourActivities.update({
-    where: { id },
+    where: { id: Number(id) },
     data: {
       title: activityData.title,
       activityTime: activityData.activityTime || '',
@@ -39,9 +57,14 @@ const updateActivity = async (id, activityData) => {
   });
 };
 
-const deleteActivity = async (id) => {
+const deleteActivity = async (id, user) => {
+  const existing = await prisma.tourActivities.findUnique({
+    where: { id: Number(id) },
+  });
+  if (!existing || !(await canManageTour(existing.tourId, user))) return null;
+
   return await prisma.tourActivities.delete({
-    where: { id },
+    where: { id: Number(id) },
   });
 };
 

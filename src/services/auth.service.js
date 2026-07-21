@@ -17,6 +17,12 @@ const findUserById = async (id) => {
       avatar: true,
       role: true,
       isActive: true,
+      providerStatus: true,
+      providerRejectReason: true,
+      companyName: true,
+      companyAddress: true,
+      businessLicense: true,
+      description: true,
       createdAt: true,
     },
   });
@@ -51,6 +57,8 @@ const updateUserProfile = async (id, { fullName, phone, avatar }) => {
       phone: true,
       avatar: true,
       role: true,
+      providerStatus: true,
+      providerRejectReason: true,
       createdAt: true,
     },
   });
@@ -125,6 +133,8 @@ const createProvider = async ({ fullName, email, password, phone, companyName, c
       password,
       phone: phone || '',
       role: 'provider',
+      providerStatus: 'pending',
+      providerRejectReason: '',
       companyName: companyName || '',
       companyAddress: companyAddress || '',
       businessLicense: businessLicense || '',
@@ -137,6 +147,7 @@ const createProvider = async ({ fullName, email, password, phone, companyName, c
       phone: true,
       role: true,
       companyName: true,
+      providerStatus: true,
     },
   });
 };

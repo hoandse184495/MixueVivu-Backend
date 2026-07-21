@@ -96,11 +96,11 @@ const createTour = async (req, res, next) => {
 
 const updateTour = async (req, res, next) => {
   try {
-    const tour = await tourService.updateTour(req.params.id, req.body);
+    const tour = await tourService.updateTour(req.params.id, req.body, req.user);
 
     if (!tour) {
       return res.status(404).json({
-        message: 'Tour not found',
+        message: 'Tour not found or you do not have permission',
       });
     }
 
@@ -115,11 +115,11 @@ const updateTour = async (req, res, next) => {
 
 const deleteTour = async (req, res, next) => {
   try {
-    const tour = await tourService.deleteTour(req.params.id);
+    const tour = await tourService.deleteTour(req.params.id, req.user);
 
     if (!tour) {
       return res.status(404).json({
-        message: 'Tour not found',
+        message: 'Tour not found or you do not have permission',
       });
     }
 
@@ -216,6 +216,25 @@ const rejectTour = async (req, res, next) => {
   }
 };
 
+const resubmitTour = async (req, res, next) => {
+  try {
+    const tour = await tourService.resubmitTour(Number(req.params.id), req.user.id);
+
+    if (!tour) {
+      return res.status(404).json({
+        message: 'Rejected tour not found or you do not have permission',
+      });
+    }
+
+    res.status(200).json({
+      message: 'Resubmit tour successfully',
+      data: tour,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const hideTour = async (req, res, next) => {
   try {
     const tour = await tourService.hideTour(Number(req.params.id));
@@ -265,6 +284,7 @@ module.exports = {
   getPendingTours,
   approveTour,
   rejectTour,
+  resubmitTour,
   hideTour,
   completeTour,
 };

@@ -18,7 +18,8 @@ const getAllUsers = async ({ role, search }) => {
     select: {
       id: true, fullName: true, email: true, phone: true, avatar: true,
       role: true, isActive: true, companyName: true, companyAddress: true,
-      businessLicense: true, description: true, createdAt: true,
+      businessLicense: true, description: true, providerStatus: true,
+      providerRejectReason: true, createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -30,7 +31,8 @@ const getUserById = async (id) => {
     select: {
       id: true, fullName: true, email: true, phone: true, avatar: true,
       role: true, isActive: true, companyName: true, companyAddress: true,
-      businessLicense: true, description: true, createdAt: true,
+      businessLicense: true, description: true, providerStatus: true,
+      providerRejectReason: true, createdAt: true,
       _count: { select: { Bookings: true, Tours: true, Reviews: true } },
     },
   });
@@ -47,6 +49,37 @@ const unblockUser = async (id) => {
   return await prisma.users.update({
     where: { id },
     data: { isActive: true },
+  });
+};
+
+const approveProvider = async (id) => {
+  const provider = await prisma.users.findFirst({
+    where: { id, role: 'provider' },
+  });
+  if (!provider) return null;
+
+  return await prisma.users.update({
+    where: { id },
+    data: {
+      providerStatus: 'approved',
+      providerRejectReason: null,
+      isActive: true,
+    },
+  });
+};
+
+const rejectProvider = async (id, reason) => {
+  const provider = await prisma.users.findFirst({
+    where: { id, role: 'provider' },
+  });
+  if (!provider) return null;
+
+  return await prisma.users.update({
+    where: { id },
+    data: {
+      providerStatus: 'rejected',
+      providerRejectReason: reason || '',
+    },
   });
 };
 
@@ -135,6 +168,8 @@ module.exports = {
   getUserById,
   blockUser,
   unblockUser,
+  approveProvider,
+  rejectProvider,
   getDashboard,
   getRevenueStats,
   getBookingStats,

@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   getAllUsers, getUserById, blockUser, unblockUser,
+  approveProvider, rejectProvider,
   getDashboard, getRevenueStats, getBookingStats, getTopTours,
 } = require('../controllers/admin.controller');
 const { protect, authorizeRoles } = require('../middlewares/auth.middleware');
@@ -86,6 +87,9 @@ router.put('/users/:id/block', blockUser);
  *         description: Success
  */
 router.put('/users/:id/unblock', unblockUser);
+
+router.put('/providers/:id/approve', approveProvider);
+router.put('/providers/:id/reject', rejectProvider);
 
 /**
  * @swagger

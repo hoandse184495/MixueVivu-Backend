@@ -34,7 +34,13 @@ const getActivityById = async (req, res, next) => {
 
 const createActivity = async (req, res, next) => {
   try {
-    const activity = await activityService.createActivity(req.body);
+    const activity = await activityService.createActivity(req.body, req.user);
+
+    if (!activity) {
+      return res.status(404).json({
+        message: 'Tour not found or you do not have permission',
+      });
+    }
 
     res.status(201).json({
       message: 'Create activity successfully',
@@ -47,11 +53,11 @@ const createActivity = async (req, res, next) => {
 
 const updateActivity = async (req, res, next) => {
   try {
-    const activity = await activityService.updateActivity(req.params.id, req.body);
+    const activity = await activityService.updateActivity(req.params.id, req.body, req.user);
 
     if (!activity) {
       return res.status(404).json({
-        message: 'Activity not found',
+        message: 'Activity not found or you do not have permission',
       });
     }
 
@@ -66,11 +72,11 @@ const updateActivity = async (req, res, next) => {
 
 const deleteActivity = async (req, res, next) => {
   try {
-    const activity = await activityService.deleteActivity(req.params.id);
+    const activity = await activityService.deleteActivity(req.params.id, req.user);
 
     if (!activity) {
       return res.status(404).json({
-        message: 'Activity not found',
+        message: 'Activity not found or you do not have permission',
       });
     }
 

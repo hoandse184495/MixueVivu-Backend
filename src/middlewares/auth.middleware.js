@@ -51,6 +51,19 @@ const authorizeRoles = (...roles) => {
       });
     }
 
+    if (
+      req.user.role === 'provider' &&
+      roles.includes('provider') &&
+      req.user.providerStatus !== 'approved'
+    ) {
+      return res.status(403).json({
+        message:
+          req.user.providerStatus === 'rejected'
+            ? `Provider account rejected: ${req.user.providerRejectReason || 'No reason provided'}`
+            : 'Provider account is waiting for manager approval',
+      });
+    }
+
     next();
   };
 };

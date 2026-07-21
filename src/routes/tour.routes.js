@@ -11,6 +11,7 @@ const {
   getPendingTours,
   approveTour,
   rejectTour,
+  resubmitTour,
   hideTour,
   completeTour,
 } = require('../controllers/tour.controller');
@@ -141,6 +142,8 @@ router.put('/:id/approve', protect, authorizeRoles('manager'), approveTour);
  *         description: Success
  */
 router.put('/:id/reject', protect, authorizeRoles('manager'), rejectTour);
+
+router.put('/:id/resubmit', protect, authorizeRoles('provider'), resubmitTour);
 
 /**
  * @swagger
