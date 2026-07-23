@@ -6,6 +6,12 @@ const allowedProviderStatuses = ['pending', 'approved', 'rejected'];
 const isValidEmail = (email) =>
   typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+const normalizePhone = (phone) =>
+  typeof phone === 'string' ? phone.trim().replace(/\s+/g, '') : '';
+
+const isValidPhone = (phone) =>
+  /^(0|\+84)[0-9]{9,10}$/.test(normalizePhone(phone));
+
 const isStrongEnoughPassword = (password) =>
   typeof password === 'string' &&
   password.length >= 8 &&
@@ -57,21 +63,30 @@ const createUser = async (req, res, next) => {
       fullName,
       email,
       password,
+      phone,
       role = 'user',
       providerStatus,
     } = req.body;
 
-    if (!fullName?.trim() || !email?.trim() || !password) {
-      return res.status(400).json({ message: 'Full name, email and password are required' });
+    if (!fullName?.trim() || !email?.trim() || !password || !phone?.trim()) {
+      return res.status(400).json({ message: 'Họ tên, email, mật khẩu và số điện thoại là bắt buộc' });
+    }
+
+    if (fullName.trim().length < 2) {
+      return res.status(400).json({ message: 'Họ tên phải có ít nhất 2 ký tự' });
     }
 
     if (!isValidEmail(email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
+      return res.status(400).json({ message: 'Email không đúng định dạng' });
+    }
+
+    if (!isValidPhone(phone)) {
+      return res.status(400).json({ message: 'Số điện thoại phải bắt đầu bằng 0 hoặc +84 và có 10-11 chữ số' });
     }
 
     if (!isStrongEnoughPassword(password)) {
       return res.status(400).json({
-        message: 'Password must be at least 8 characters and contain a letter and a number',
+        message: 'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ và số',
       });
     }
 
@@ -87,27 +102,40 @@ const createUser = async (req, res, next) => {
       ...req.body,
       fullName: fullName.trim(),
       email: email.trim().toLowerCase(),
+      phone: normalizePhone(phone),
       role,
     });
 
     res.status(201).json({ message: 'Create user successfully', data: user });
   } catch (error) {
-    if (error.code === 'P2002') return res.status(400).json({ message: 'Email already exists' });
+    if (error.code === 'P2002') return res.status(400).json({ message: 'Email này đã được sử dụng. Vui lòng nhập email khác.' });
     next(error);
   }
 };
 
 const updateUser = async (req, res, next) => {
   try {
-    const { email, password, role, providerStatus } = req.body;
+    const { fullName, email, password, phone, role, providerStatus } = req.body;
+
+    if (fullName !== undefined && fullName.trim().length < 2) {
+      return res.status(400).json({ message: 'Họ tên phải có ít nhất 2 ký tự' });
+    }
 
     if (email !== undefined && !isValidEmail(email)) {
-      return res.status(400).json({ message: 'Invalid email format' });
+      return res.status(400).json({ message: 'Email không đúng định dạng' });
+    }
+
+    if (phone !== undefined && !phone.trim()) {
+      return res.status(400).json({ message: 'Vui lòng nhập số điện thoại' });
+    }
+
+    if (phone !== undefined && !isValidPhone(phone)) {
+      return res.status(400).json({ message: 'Số điện thoại phải bắt đầu bằng 0 hoặc +84 và có 10-11 chữ số' });
     }
 
     if (password && !isStrongEnoughPassword(password)) {
       return res.status(400).json({
-        message: 'Password must be at least 8 characters and contain a letter and a number',
+        message: 'Mật khẩu phải có ít nhất 8 ký tự, gồm chữ và số',
       });
     }
 
@@ -121,14 +149,15 @@ const updateUser = async (req, res, next) => {
 
     const user = await adminService.updateUser(Number(req.params.id), {
       ...req.body,
-      fullName: req.body.fullName?.trim(),
+      fullName: fullName?.trim(),
       email: email?.trim().toLowerCase(),
+      phone: phone === undefined ? undefined : normalizePhone(phone),
     });
 
     res.status(200).json({ message: 'Update user successfully', data: user });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ message: 'User not found' });
-    if (error.code === 'P2002') return res.status(400).json({ message: 'Email already exists' });
+    if (error.code === 'P2002') return res.status(400).json({ message: 'Email này đã được sử dụng. Vui lòng nhập email khác.' });
     next(error);
   }
 };

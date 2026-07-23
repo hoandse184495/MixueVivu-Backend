@@ -29,6 +29,41 @@ const createNotification = async (
   });
 };
 
+const createManagerNotification = async (
+  {
+    bookingId,
+    tourId,
+    paymentId,
+    type,
+    title,
+    message,
+    status,
+  },
+  client = prisma
+) => {
+  if (!type || !title || !message) return null;
+
+  const managers = await client.users.findMany({
+    where: { role: 'manager' },
+    select: { id: true },
+  });
+
+  if (managers.length === 0) return null;
+
+  return await client.notifications.createMany({
+    data: managers.map((manager) => ({
+      userId: manager.id,
+      bookingId: bookingId || null,
+      tourId: tourId || null,
+      paymentId: paymentId || null,
+      type,
+      title,
+      message,
+      status: status || null,
+    })),
+  });
+};
+
 const getMyNotifications = async (userId) => {
   return await prisma.notifications.findMany({
     where: { userId },
@@ -59,6 +94,7 @@ const markAllAsRead = async (userId) => {
 
 module.exports = {
   createNotification,
+  createManagerNotification,
   getMyNotifications,
   getUnreadCount,
   markAsRead,

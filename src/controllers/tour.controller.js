@@ -125,6 +125,7 @@ const deleteTour = async (req, res, next) => {
 
     res.status(200).json({
       message: 'Delete tour successfully',
+      data: tour,
     });
   } catch (error) {
     next(error);

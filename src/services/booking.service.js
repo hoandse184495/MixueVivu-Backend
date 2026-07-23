@@ -4,7 +4,7 @@ const notificationService = require('./notification.service');
 const createHttpError = (message, statusCode = 400) =>
   Object.assign(new Error(message), { statusCode });
 
-const createBookingStatusNotification = async (tx, booking, status) => {
+const createBookingStatusNotification = async (tx, booking, status, reason = '') => {
   if (!booking?.userId) return;
 
   const tourTitle = booking.Tours?.title || 'tour của bạn';
@@ -17,7 +17,7 @@ const createBookingStatusNotification = async (tx, booking, status) => {
     cancelled: {
       type: 'booking_rejected',
       title: 'Đơn đặt tour bị từ chối',
-      message: `Đơn đặt ${tourTitle} đã bị từ chối hoặc hủy. Bạn có thể đặt tour khác phù hợp hơn.`,
+      message: `Đơn đặt ${tourTitle} đã bị từ chối hoặc hủy.${reason ? ` Lý do: ${reason}.` : ''} Bạn có thể đặt tour khác phù hợp hơn.`,
     },
     completed: {
       type: 'booking_completed',
@@ -31,6 +31,68 @@ const createBookingStatusNotification = async (tx, booking, status) => {
   await notificationService.createNotification(
     {
       userId: booking.userId,
+      bookingId: booking.id,
+      tourId: booking.tourId,
+      status,
+      ...notification,
+    },
+    tx
+  );
+};
+
+const createProviderBookingNotification = async (tx, booking, status) => {
+  const providerId = booking?.Tours?.providerId;
+  if (!providerId) return;
+
+  const tourTitle = booking.Tours?.title || 'tour của bạn';
+  const customerName = booking.fullName || booking.Users?.fullName || 'Khách hàng';
+  const notifications = {
+    created: {
+      type: 'provider_booking_created',
+      title: 'Có booking mới',
+      message: `${customerName} vừa đặt ${tourTitle}. Vào Đơn đặt tour để xác nhận hoặc từ chối.`,
+    },
+    completed: {
+      type: 'provider_booking_completed',
+      title: 'Booking đã hoàn thành',
+      message: `Booking của ${customerName} cho ${tourTitle} đã hoàn thành. Doanh thu đã được ghi nhận.`,
+    },
+  };
+  const notification = notifications[status];
+  if (!notification) return;
+
+  await notificationService.createNotification(
+    {
+      userId: providerId,
+      bookingId: booking.id,
+      tourId: booking.tourId,
+      status,
+      ...notification,
+    },
+    tx
+  );
+};
+
+const createManagerBookingNotification = async (tx, booking, status) => {
+  const tourTitle = booking?.Tours?.title || 'tour';
+  const customerName = booking?.fullName || booking?.Users?.fullName || 'Khách hàng';
+  const notifications = {
+    created: {
+      type: 'admin_booking_created',
+      title: 'Booking mới',
+      message: `${customerName} vừa đặt ${tourTitle}. Vào Đơn đặt tour để theo dõi.`,
+    },
+    completed: {
+      type: 'admin_booking_completed',
+      title: 'Booking đã hoàn thành',
+      message: `Booking của ${customerName} cho ${tourTitle} đã hoàn thành và phát sinh doanh thu.`,
+    },
+  };
+  const notification = notifications[status];
+  if (!notification) return;
+
+  await notificationService.createManagerNotification(
+    {
       bookingId: booking.id,
       tourId: booking.tourId,
       status,
@@ -78,10 +140,18 @@ const confirmBookingWithSlotDeduction = async (tx, id, providerId) => {
   }
 
   const nextStatus = booking.status === 'completed' ? 'completed' : 'confirmed';
+  const shouldDeductSlots = nextStatus === 'confirmed' && !booking.slotsDeducted;
+
+  if (shouldDeductSlots) {
+    await deductSlotsForBooking(tx, booking);
+  }
 
   const updatedBooking = await tx.bookings.update({
     where: { id: booking.id },
-    data: { status: nextStatus },
+    data: {
+      status: nextStatus,
+      slotsDeducted: shouldDeductSlots ? true : booking.slotsDeducted,
+    },
     include: { Tours: true },
   });
 
@@ -92,7 +162,13 @@ const confirmBookingWithSlotDeduction = async (tx, id, providerId) => {
   return updatedBooking;
 };
 
-const cancelBookingWithSlotRestore = async (tx, id, providerId, notifyUser = false) => {
+const cancelBookingWithSlotRestore = async (
+  tx,
+  id,
+  providerId,
+  notifyUser = false,
+  reason = ''
+) => {
   const booking = await getBookingForSlotUpdate(tx, id, providerId);
   if (!booking) return null;
 
@@ -115,12 +191,16 @@ const cancelBookingWithSlotRestore = async (tx, id, providerId, notifyUser = fal
 
   const updatedBooking = await tx.bookings.update({
     where: { id: booking.id },
-    data: { status: 'cancelled', slotsDeducted: false },
+    data: {
+      status: 'cancelled',
+      slotsDeducted: false,
+      note: reason || booking.note || '',
+    },
     include: { Tours: true },
   });
 
   if (notifyUser) {
-    await createBookingStatusNotification(tx, updatedBooking, 'cancelled');
+    await createBookingStatusNotification(tx, updatedBooking, 'cancelled', reason);
   }
 
   return updatedBooking;
@@ -146,6 +226,20 @@ const createBooking = async ({
     return null;
   }
 
+  const today = new Date();
+  const todayStart = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const tourStartDate = tour.startDate
+    ? new Date(Date.UTC(
+        tour.startDate.getFullYear(),
+        tour.startDate.getMonth(),
+        tour.startDate.getDate()
+      ))
+    : null;
+
+  if (!tourStartDate || tourStartDate <= todayStart) {
+    throw createHttpError('Tour đã bắt đầu nên không thể đặt tour này nữa.');
+  }
+
   const peopleCount = Number(numberOfPeople);
   if (!Number.isInteger(peopleCount) || peopleCount <= 0) {
     throw createHttpError('Number of people must be a positive whole number');
@@ -161,33 +255,41 @@ const createBooking = async ({
   const commissionAmount = totalPrice * commissionRate;
   const providerAmount = totalPrice - commissionAmount;
 
-  return await prisma.bookings.create({
-    data: {
-      userId,
-      tourId,
-      fullName,
-      phone,
-      numberOfPeople: peopleCount,
-      departureDate: departureDate ? new Date(departureDate) : null,
-      totalPrice,
-      commissionAmount,
-      providerAmount,
-      slotsDeducted: false,
-      note: note || '',
-      status: 'pending',
-      Payments: {
-        create: {
-          userId,
-          amount: totalPrice,
-          method: 'bank_transfer',
-          status: 'pending',
-          note: 'Waiting for customer payment confirmation',
+  return await prisma.$transaction(async (tx) => {
+    const booking = await tx.bookings.create({
+      data: {
+        userId,
+        tourId,
+        fullName,
+        phone,
+        numberOfPeople: peopleCount,
+        departureDate: departureDate ? new Date(departureDate) : null,
+        totalPrice,
+        commissionAmount,
+        providerAmount,
+        slotsDeducted: false,
+        note: note || '',
+        status: 'pending',
+        Payments: {
+          create: {
+            userId,
+            amount: totalPrice,
+            method: 'bank_transfer',
+            status: 'pending',
+            note: 'Waiting for customer payment confirmation',
+          },
         },
       },
-    },
-    include: {
-      Payments: true,
-    },
+      include: {
+        Payments: true,
+        Tours: true,
+      },
+    });
+
+    await createProviderBookingNotification(tx, booking, 'created');
+    await createManagerBookingNotification(tx, booking, 'created');
+
+    return booking;
   });
 };
 
@@ -277,6 +379,10 @@ const updateBookingStatus = async (id, status) => {
     );
   }
 
+  if (status === 'completed') {
+    return await completeBooking(Number(id));
+  }
+
   return await prisma.bookings.update({
     where: { id: Number(id) },
     data: { status },
@@ -291,6 +397,10 @@ const cancelMyBooking = async (id, userId) => {
 
     if (!booking) return null;
 
+    if (booking.status !== 'pending') {
+      throw createHttpError('Bạn chỉ có thể hủy booking khi đơn còn chờ xử lý.');
+    }
+
     return await cancelBookingWithSlotRestore(tx, booking.id);
   });
 };
@@ -301,9 +411,9 @@ const confirmBooking = async (id, providerId) => {
   );
 };
 
-const rejectBooking = async (id, providerId) => {
+const rejectBooking = async (id, providerId, reason = '') => {
   return await prisma.$transaction((tx) =>
-    cancelBookingWithSlotRestore(tx, Number(id), providerId, true)
+    cancelBookingWithSlotRestore(tx, Number(id), providerId, true, reason)
   );
 };
 
@@ -349,6 +459,8 @@ const completeBooking = async (id, providerId) => {
     });
 
     await createBookingStatusNotification(tx, completedBooking, 'completed');
+    await createProviderBookingNotification(tx, completedBooking, 'completed');
+    await createManagerBookingNotification(tx, completedBooking, 'completed');
 
     if (booking?.Tours?.providerId && booking.Payouts.length === 0) {
       await tx.payouts.create({

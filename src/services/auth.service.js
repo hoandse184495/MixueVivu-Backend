@@ -1,4 +1,5 @@
 const { prisma } = require('../config/db');
+const notificationService = require('./notification.service');
 
 const findUserByEmail = async (email) => {
   return await prisma.users.findFirst({
@@ -126,29 +127,43 @@ const changePassword = async (id, newHashedPassword) => {
 };
 
 const createProvider = async ({ fullName, email, password, phone, companyName, companyAddress, businessLicense, description }) => {
-  return await prisma.users.create({
-    data: {
-      fullName,
-      email,
-      password,
-      phone: phone || '',
-      role: 'provider',
-      providerStatus: 'pending',
-      providerRejectReason: '',
-      companyName: companyName || '',
-      companyAddress: companyAddress || '',
-      businessLicense: businessLicense || '',
-      description: description || '',
-    },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      phone: true,
-      role: true,
-      companyName: true,
-      providerStatus: true,
-    },
+  return await prisma.$transaction(async (tx) => {
+    const provider = await tx.users.create({
+      data: {
+        fullName,
+        email,
+        password,
+        phone: phone || '',
+        role: 'provider',
+        providerStatus: 'pending',
+        providerRejectReason: '',
+        companyName: companyName || '',
+        companyAddress: companyAddress || '',
+        businessLicense: businessLicense || '',
+        description: description || '',
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        role: true,
+        companyName: true,
+        providerStatus: true,
+      },
+    });
+
+    await notificationService.createManagerNotification(
+      {
+        type: 'admin_provider_pending',
+        title: 'Provider mới chờ duyệt',
+        message: `${provider.companyName || provider.fullName} vừa đăng ký làm provider. Vào Người dùng để duyệt hoặc từ chối.`,
+        status: 'pending',
+      },
+      tx
+    );
+
+    return provider;
   });
 };
 

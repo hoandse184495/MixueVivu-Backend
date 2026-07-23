@@ -131,7 +131,13 @@ const confirmBooking = async (req, res, next) => {
 
 const rejectBooking = async (req, res, next) => {
   try {
-    const booking = await bookingService.rejectBooking(Number(req.params.id), req.user.id);
+    const reason =
+      typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+    const booking = await bookingService.rejectBooking(
+      Number(req.params.id),
+      req.user.id,
+      reason
+    );
 
     if (!booking) {
       return res.status(404).json({

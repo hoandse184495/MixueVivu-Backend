@@ -1,5 +1,6 @@
 const { prisma } = require('../config/db');
 const bcrypt = require('bcryptjs');
+const notificationService = require('./notification.service');
 
 // ========== User Management ==========
 
@@ -166,33 +167,64 @@ const deleteUser = async (id) => {
 };
 
 const approveProvider = async (id) => {
-  const provider = await prisma.users.findFirst({
-    where: { id, role: 'provider' },
-  });
-  if (!provider) return null;
+  return await prisma.$transaction(async (tx) => {
+    const provider = await tx.users.findFirst({
+      where: { id, role: 'provider' },
+    });
+    if (!provider) return null;
 
-  return await prisma.users.update({
-    where: { id },
-    data: {
-      providerStatus: 'approved',
-      providerRejectReason: null,
-      isActive: true,
-    },
+    const updatedProvider = await tx.users.update({
+      where: { id },
+      data: {
+        providerStatus: 'approved',
+        providerRejectReason: null,
+        isActive: true,
+      },
+    });
+
+    await notificationService.createNotification(
+      {
+        userId: id,
+        type: 'provider_approved',
+        title: 'Tài khoản provider đã được duyệt',
+        message: 'Manager đã duyệt tài khoản công ty du lịch của bạn. Bạn có thể đăng tour và quản lý booking.',
+        status: 'approved',
+      },
+      tx
+    );
+
+    return updatedProvider;
   });
 };
 
 const rejectProvider = async (id, reason) => {
-  const provider = await prisma.users.findFirst({
-    where: { id, role: 'provider' },
-  });
-  if (!provider) return null;
+  return await prisma.$transaction(async (tx) => {
+    const provider = await tx.users.findFirst({
+      where: { id, role: 'provider' },
+    });
+    if (!provider) return null;
 
-  return await prisma.users.update({
-    where: { id },
-    data: {
-      providerStatus: 'rejected',
-      providerRejectReason: reason || '',
-    },
+    const rejectReason = reason || 'Thông tin công ty chưa đạt yêu cầu';
+    const updatedProvider = await tx.users.update({
+      where: { id },
+      data: {
+        providerStatus: 'rejected',
+        providerRejectReason: rejectReason,
+      },
+    });
+
+    await notificationService.createNotification(
+      {
+        userId: id,
+        type: 'provider_rejected',
+        title: 'Tài khoản provider bị từ chối',
+        message: `Manager đã từ chối tài khoản công ty du lịch của bạn. Lý do: ${rejectReason}.`,
+        status: 'rejected',
+      },
+      tx
+    );
+
+    return updatedProvider;
   });
 };
 

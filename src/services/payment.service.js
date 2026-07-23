@@ -36,10 +36,47 @@ const createPaymentStatusNotification = async (tx, payment, status) => {
   );
 };
 
+const createManagerPaymentNotification = async (tx, payment, status) => {
+  const tourTitle = payment?.Bookings?.Tours?.title || 'tour';
+  const notifications = {
+    submitted: {
+      type: 'admin_payment_submitted',
+      title: 'Khách đã xác nhận chuyển khoản',
+      message: `Khách đã gửi xác nhận thanh toán cho ${tourTitle}. Vào Thanh Toán để kiểm tra và xác nhận.`,
+    },
+    refunded: {
+      type: 'admin_payment_refunded',
+      title: 'Thanh toán đã hoàn tiền',
+      message: `Giao dịch cho ${tourTitle} đã được đánh dấu hoàn tiền.`,
+    },
+  };
+  const notification = notifications[status];
+  if (!notification) return;
+
+  await notificationService.createManagerNotification(
+    {
+      bookingId: payment.bookingId,
+      tourId: payment.Bookings?.tourId,
+      paymentId: payment.id,
+      status,
+      ...notification,
+    },
+    tx
+  );
+};
+
 const getAllPayments = async () => {
   return await prisma.payments.findMany({
     include: {
-      Bookings: { select: { id: true, fullName: true, tourId: true, status: true } },
+      Bookings: {
+        select: {
+          id: true,
+          fullName: true,
+          tourId: true,
+          status: true,
+          Tours: { select: { title: true } },
+        },
+      },
       Users: { select: { id: true, fullName: true, email: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -79,6 +116,7 @@ const submitPayment = async (id, userId, { transactionId, note }) => {
     });
 
     await createPaymentStatusNotification(tx, updatedPayment, 'submitted');
+    await createManagerPaymentNotification(tx, updatedPayment, 'submitted');
 
     return updatedPayment;
   });
@@ -86,6 +124,27 @@ const submitPayment = async (id, userId, { transactionId, note }) => {
 
 const confirmPayment = async (id) => {
   return await prisma.$transaction(async (tx) => {
+    const existingPayment = await tx.payments.findUnique({
+      where: { id },
+      include: {
+        Bookings: { select: { id: true, tourId: true, status: true } },
+      },
+    });
+
+    if (!existingPayment) return null;
+
+    if (existingPayment.status !== 'submitted') {
+      const error = new Error('Only submitted payments can be confirmed');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (existingPayment.Bookings?.status === 'cancelled') {
+      const error = new Error('Payments for cancelled bookings cannot be confirmed');
+      error.statusCode = 400;
+      throw error;
+    }
+
     const payment = await tx.payments.update({
       where: { id },
       data: { status: 'paid', paidAt: new Date() },
@@ -117,6 +176,12 @@ const refundPayment = async (id, note) => {
       throw error;
     }
 
+    if (existingPayment.Bookings?.status !== 'cancelled') {
+      const error = new Error('Chỉ có thể hoàn tiền khi booking đã bị hủy');
+      error.statusCode = 400;
+      throw error;
+    }
+
     const payment = await tx.payments.update({
       where: { id },
       data: { status: 'refunded', note: note || 'Refunded by admin' },
@@ -126,6 +191,7 @@ const refundPayment = async (id, note) => {
     });
 
     await createPaymentStatusNotification(tx, payment, 'refunded');
+    await createManagerPaymentNotification(tx, payment, 'refunded');
 
     return payment;
   });

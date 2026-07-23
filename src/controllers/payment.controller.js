@@ -42,6 +42,10 @@ const submitPayment = async (req, res, next) => {
 const confirmPayment = async (req, res, next) => {
   try {
     const payment = await paymentService.confirmPayment(Number(req.params.id));
+    if (!payment) {
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
     res.status(200).json({ message: 'Payment confirmed successfully', data: payment });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ message: 'Payment not found' });
@@ -52,6 +56,10 @@ const confirmPayment = async (req, res, next) => {
 const refundPayment = async (req, res, next) => {
   try {
     const payment = await paymentService.refundPayment(Number(req.params.id), req.body.note);
+    if (!payment) {
+      return res.status(404).json({ message: 'Payment not found' });
+    }
+
     res.status(200).json({ message: 'Payment refunded successfully', data: payment });
   } catch (error) {
     if (error.code === 'P2025') return res.status(404).json({ message: 'Payment not found' });
